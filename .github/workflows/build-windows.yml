@@ -41,6 +41,27 @@ jobs:
         run: |
           .github/scripts/Build-Windows.ps1 -Target x64 -Configuration Release
 
+      - name: Verify OBS install layout
+        shell: pwsh
+        run: |
+          $dll = 'release/Release/obs-plugins/64bit/worship-graphics.dll'
+          $data = 'release/Release/data/obs-plugins/worship-graphics'
+
+          if (-not (Test-Path $dll)) {
+            Write-Error "Missing required OBS plugin DLL: $dll"
+            Get-ChildItem 'release/Release' -Recurse | Select-Object FullName
+            exit 1
+          }
+
+          if (-not (Test-Path $data)) {
+            Write-Error "Missing required OBS plugin data directory: $data"
+            exit 1
+          }
+
+          Write-Host "Correct OBS plugin layout verified."
+          Write-Host $dll
+          Write-Host $data
+
       - name: Build Windows installer
         shell: pwsh
         run: |
@@ -59,28 +80,10 @@ jobs:
             exit 1
           }
 
-          Write-Host "Installer generated:"
-          Write-Host $installer.FullName
-
-          if (Test-Path 'release/Release') {
-            Compress-Archive `
-              -Path 'release/Release/*' `
-              -DestinationPath 'artifacts/WorshipGraphics-Plugin-Windows.zip' `
-              -Force
-          }
-
-      - name: Verify Worship Graphics DLL
-        shell: pwsh
-        run: |
-          $dll = Get-ChildItem 'release/Release' -Filter 'worship-graphics.dll' -Recurse | Select-Object -First 1
-
-          if (-not $dll) {
-            Write-Error "worship-graphics.dll was not found in the release tree."
-            exit 1
-          }
-
-          Write-Host "Plugin DLL:"
-          Write-Host $dll.FullName
+          Compress-Archive `
+            -Path 'release/Release/*' `
+            -DestinationPath 'artifacts/WorshipGraphics-Plugin-Windows.zip' `
+            -Force
 
       - name: Upload installer and plugin
         uses: actions/upload-artifact@v4
