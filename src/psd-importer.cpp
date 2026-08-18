@@ -1,6 +1,14 @@
 #include "psd-importer.hpp"
 
+#if defined(_MSC_VER) && defined(__cplusplus)
+#define WG_OPENPSD_BOOL_SHIM 1
+#define _Bool bool
+#endif
 #include <openpsd/psd.h>
+#if defined(WG_OPENPSD_BOOL_SHIM)
+#undef _Bool
+#undef WG_OPENPSD_BOOL_SHIM
+#endif
 
 #include <QByteArray>
 #include <QDir>
@@ -70,7 +78,7 @@ QString importedAssetDirectory(const QString &sourceFile)
   return result;
 }
 
-bool saveRasterLayer(const psd_document_t *doc,
+bool saveRasterLayer(psd_document_t *doc,
                      int32_t index,
                      const QString &assetDir,
                      const QString &name,
@@ -175,7 +183,7 @@ Layer commonLayer(const psd_document_t *doc,
   return layer;
 }
 
-bool importTextLayer(const psd_document_t *doc,
+bool importTextLayer(psd_document_t *doc,
                      int32_t index,
                      const QString &name,
                      const QString &parentId,
@@ -241,7 +249,7 @@ bool importTextLayer(const psd_document_t *doc,
   layer.splitOverflow = false;
 
   const int explicitLines =
-      std::max(1, layer.text.count('\n') + 1);
+      std::max(1, static_cast<int>(layer.text.count('\n')) + 1);
   layer.maxLines = std::clamp(explicitLines + 3, 1, 12);
 
   *out = layer;

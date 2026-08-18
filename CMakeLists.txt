@@ -41,7 +41,7 @@ FetchContent_Declare(
   wg_openpsd_source
   GIT_REPOSITORY https://github.com/warrengalyen/OpenPSD.git
   GIT_TAG 2151a8b92fe6a7cd98cea4f9ec50a7e5df4fb921
-  GIT_SHALLOW TRUE
+  GIT_SHALLOW FALSE
   SOURCE_SUBDIR _worship_graphics_no_subproject
 )
 FetchContent_MakeAvailable(wg_openpsd_source)
@@ -64,8 +64,12 @@ add_library(wg_openpsd STATIC
 set_target_properties(wg_openpsd PROPERTIES
   C_STANDARD 17
   C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF
   POSITION_INDEPENDENT_CODE ON
 )
+if(MSVC)
+  target_compile_options(wg_openpsd PRIVATE /TC)
+endif()
 target_include_directories(wg_openpsd PUBLIC
   ${wg_openpsd_source_SOURCE_DIR}/include
 )
