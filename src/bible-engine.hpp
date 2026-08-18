@@ -30,6 +30,8 @@ public:
   QString installedPath() const;
 
   QStringList bookNames() const;
+  QStringList bookSuggestions(const QString &query, int limit = 8) const;
+  QString completeReference(const QString &query) const;
   int chapterCount(int bookIndex) const;
   int verseCount(int bookIndex, int chapter) const;
 
@@ -44,6 +46,8 @@ private:
   };
 
   static QString normalize(const QString &value);
+  static QString canonicalBookName(int index);
+  static QString bookPartOf(const QString &query);
   void buildAliases();
   int findBook(const QString &name) const;
 

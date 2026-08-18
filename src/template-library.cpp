@@ -267,6 +267,54 @@ bool TemplateLibrary::isValidTemplateId(const QString &templateId)
   return info.exists() && info.isFile() && info.suffix().compare("wgtpl", Qt::CaseInsensitive) == 0;
 }
 
+
+bool TemplateLibrary::isBibleTemplateId(const QString &templateId)
+{
+  if (templateId == "builtin:scripture")
+    return !isBuiltinHidden(templateId);
+  if (!isValidTemplateId(templateId) || templateId.startsWith("builtin:"))
+    return false;
+
+  Project project;
+  if (!load(templateId, &project, nullptr) || project.usage != TemplateUsage::BibleText)
+    return false;
+
+  bool verse = false;
+  bool reference = false;
+  for (const Layer &layer : project.layers) {
+    if (layer.name == "{{VERSICULO}}") verse = true;
+    if (layer.name == "{{REFERENCIA}}") reference = true;
+  }
+  return verse && reference;
+}
+
+void TemplateLibrary::setBibleDefaultTemplate(const QString &templateId)
+{
+  if (isBibleTemplateId(templateId))
+    setDefaultTemplate("scripture", templateId);
+}
+
+QString TemplateLibrary::preferredBibleTemplate()
+{
+  QString id = defaultTemplate("scripture");
+  if (!id.isEmpty() && isBibleTemplateId(id))
+    return id;
+
+  for (const TemplateEntry &entry : entries()) {
+    if (entry.usage == TemplateUsage::BibleText && isBibleTemplateId(entry.filePath)) {
+      setDefaultTemplate("scripture", entry.filePath);
+      return entry.filePath;
+    }
+  }
+
+  if (!isBuiltinHidden("builtin:scripture")) {
+    setDefaultTemplate("scripture", "builtin:scripture");
+    return "builtin:scripture";
+  }
+
+  return QString();
+}
+
 void TemplateLibrary::setDefaultTemplate(const QString &serviceKind, const QString &templateId)
 {
   QSettings settings("WorshipGraphics", "WorshipGraphics");

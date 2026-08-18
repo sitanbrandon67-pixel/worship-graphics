@@ -9,9 +9,10 @@ class QLabel;
 class QListWidget;
 class QLineEdit;
 class QTextEdit;
-class QComboBox;
 class QTabWidget;
 class QShowEvent;
+class QCompleter;
+class QStringListModel;
 
 namespace wg {
 
@@ -31,10 +32,11 @@ protected:
 
 private slots:
   void refreshProgram();
-  void refreshTemplateChoices();
+  void refreshServiceTemplates();
+  void previewServiceTemplate(int row);
+  void addSelectedTemplateToService();
 
   void loadPreparedSelection(int row);
-  void addPreparedGraphic();
   void removePreparedGraphic();
   void movePreparedUp();
   void movePreparedDown();
@@ -42,43 +44,38 @@ private slots:
   void nextPrepared();
 
   void installBible();
-  void searchBible();
-  void prepareBibleForProgram();
+  void handleBibleEnter();
   void addBibleToService();
   void navigateBible(int delta);
-  void refreshBibleSelectors();
-  void refreshChapters();
-  void refreshVerses();
-  void selectBibleVerse();
+  void updateBibleSuggestions(const QString &text);
 
 private:
   void showPassage(const BiblePassage &passage);
   void tryLoadInstalledBible();
+  void acceptBibleSuggestion(const QString &bookName);
+  void refreshBibleTemplateLabel();
 
   void seedPreparedService();
   void appendPrepared(const QString &label, const QString &kind, const Project &project, bool select = true);
   void rebuildPreparedList(int selectedRow = -1);
-  void populateTemplateCombo(QComboBox *combo, const QString &kind) const;
-  Project projectForTemplate(const QString &kind, const QString &templateId) const;
-  Project projectForServiceKind(const QString &kind) const;
+  Project projectForTemplateId(const QString &templateId) const;
+  Project projectForBiblePassage(const BiblePassage &passage) const;
 
   QLabel *programScreen_ = nullptr;
   QLabel *statusLabel_ = nullptr;
   QLabel *preparedLabel_ = nullptr;
   QLabel *programNameLabel_ = nullptr;
 
+  QListWidget *serviceTemplates_ = nullptr;
   QListWidget *serviceList_ = nullptr;
-  QComboBox *serviceType_ = nullptr;
-  QComboBox *templateChoice_ = nullptr;
-  QComboBox *bibleTemplateChoice_ = nullptr;
   QTabWidget *tabs_ = nullptr;
 
   QLineEdit *bibleSearch_ = nullptr;
   QTextEdit *bibleResult_ = nullptr;
   QLabel *bibleStatus_ = nullptr;
-  QComboBox *book_ = nullptr;
-  QComboBox *chapter_ = nullptr;
-  QComboBox *verse_ = nullptr;
+  QLabel *bibleTemplateLabel_ = nullptr;
+  QCompleter *bibleCompleter_ = nullptr;
+  QStringListModel *bibleSuggestionModel_ = nullptr;
 
   BibleEngine bible_;
   BiblePassage currentPassage_;

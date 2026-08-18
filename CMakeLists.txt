@@ -38,6 +38,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
   src/main-dock.cpp src/main-dock.hpp
   src/operator-page.cpp src/operator-page.hpp
   src/design-page.cpp src/design-page.hpp
+  src/design-canvas-widget.cpp src/design-canvas-widget.hpp
   src/theme.cpp src/theme.hpp
   src/template-factory.cpp src/template-factory.hpp
   src/template-library.cpp src/template-library.hpp

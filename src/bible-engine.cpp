@@ -7,6 +7,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QXmlStreamReader>
+#include <algorithm>
 
 namespace wg {
 
@@ -42,6 +43,28 @@ QString BibleEngine::normalize(const QString &value)
   }
   out.replace(QRegularExpression("\\s+"), " ");
   return out.trimmed();
+}
+
+
+QString BibleEngine::canonicalBookName(int index)
+{
+  if (index < 0 || index >= kBookAliases.size())
+    return QString();
+  return kBookAliases[index].section('|', 0, 0);
+}
+
+QString BibleEngine::bookPartOf(const QString &query)
+{
+  const QString trimmed = query.trimmed();
+  int digitIndex = -1;
+  for (int i = 0; i < trimmed.size(); ++i) {
+    if (trimmed.at(i).isDigit()) {
+      digitIndex = i;
+      break;
+    }
+  }
+  const QString bookPart = digitIndex < 0 ? trimmed : trimmed.left(digitIndex);
+  return bookPart.trimmed();
 }
 
 void BibleEngine::buildAliases()
@@ -162,6 +185,84 @@ QStringList BibleEngine::bookNames() const
   return result;
 }
 
+QStringList BibleEngine::bookSuggestions(const QString &query, int limit) const
+{
+  const QString key = normalize(bookPartOf(query));
+  if (key.isEmpty())
+    return {};
+
+  struct Candidate {
+    int score = 1000000;
+    int index = -1;
+  };
+
+  QVector<Candidate> candidates;
+  candidates.reserve(kBookAliases.size());
+
+  for (int i = 0; i < kBookAliases.size(); ++i) {
+    int best = 1000000;
+    const QStringList names = kBookAliases[i].split('|');
+    for (const QString &alias : names) {
+      const QString candidate = normalize(alias);
+      int score = 1000000;
+      if (candidate == key)
+        score = 0;
+      else if (candidate.startsWith(key))
+        score = 10 + candidate.size() - key.size();
+      else if (key.startsWith(candidate))
+        score = 30 + key.size() - candidate.size();
+      else {
+        const int at = candidate.indexOf(key);
+        if (at >= 0)
+          score = 60 + at * 3 + candidate.size() - key.size();
+      }
+      best = qMin(best, score);
+    }
+    if (best < 1000000)
+      candidates.push_back({best, i});
+  }
+
+  std::sort(candidates.begin(), candidates.end(), [](const Candidate &a, const Candidate &b) {
+    if (a.score != b.score) return a.score < b.score;
+    return a.index < b.index;
+  });
+
+  QStringList result;
+  for (const Candidate &candidate : candidates) {
+    if (result.size() >= qMax(1, limit))
+      break;
+    result << canonicalBookName(candidate.index);
+  }
+  return result;
+}
+
+QString BibleEngine::completeReference(const QString &query) const
+{
+  const QString trimmed = query.trimmed();
+  if (trimmed.isEmpty())
+    return QString();
+
+  int digitIndex = -1;
+  for (int i = 0; i < trimmed.size(); ++i) {
+    if (trimmed.at(i).isDigit()) {
+      digitIndex = i;
+      break;
+    }
+  }
+
+  const QString bookPart = digitIndex < 0 ? trimmed : trimmed.left(digitIndex).trimmed();
+  const int book = findBook(bookPart);
+  if (book < 0)
+    return QString();
+
+  const QString canonical = canonicalBookName(book);
+  if (digitIndex < 0)
+    return canonical + " ";
+
+  const QString tail = trimmed.mid(digitIndex).trimmed();
+  return canonical + (tail.isEmpty() ? QString(" ") : QString(" ") + tail);
+}
+
 int BibleEngine::chapterCount(int bookIndex) const
 {
   if (!loaded_ || bookIndex < 0 || bookIndex >= books_.size()) return 0;
@@ -177,7 +278,44 @@ int BibleEngine::verseCount(int bookIndex, int chapter) const
 
 int BibleEngine::findBook(const QString &name) const
 {
-  return aliases_.value(normalize(name), -1);
+  const QString key = normalize(name);
+  if (key.isEmpty())
+    return -1;
+
+  const auto exact = aliases_.constFind(key);
+  if (exact != aliases_.constEnd())
+    return exact.value();
+
+  if (key.size() < 2)
+    return -1;
+
+  int bestBook = -1;
+  int bestScore = 1000000;
+
+  for (int i = 0; i < kBookAliases.size(); ++i) {
+    const QStringList names = kBookAliases[i].split('|');
+    for (const QString &alias : names) {
+      const QString candidate = normalize(alias);
+      int score = 1000000;
+
+      if (candidate.startsWith(key))
+        score = 10 + candidate.size() - key.size();
+      else if (key.startsWith(candidate))
+        score = 30 + key.size() - candidate.size();
+      else {
+        const int at = candidate.indexOf(key);
+        if (at >= 0)
+          score = 60 + at * 3 + candidate.size() - key.size();
+      }
+
+      if (score < bestScore) {
+        bestScore = score;
+        bestBook = i;
+      }
+    }
+  }
+
+  return bestBook;
 }
 
 BiblePassage BibleEngine::passage(int bookIndex, int chapter, int verseStart, int verseEnd) const
@@ -227,7 +365,7 @@ BiblePassage BibleEngine::passage(int bookIndex, int chapter, int verseStart, in
 BiblePassage BibleEngine::search(const QString &query) const
 {
   if (!loaded_) return {};
-  const QRegularExpression re(R"(^\s*(.+?)\s+(\d+)(?:\s*[: ]\s*(\d+)(?:\s*-\s*(\d+))?)?\s*$)");
+  const QRegularExpression re(R"(^\s*(.+?)\s+(\d+)(?:\s*[:., ]\s*(\d+)(?:\s*-\s*(\d+))?)?\s*$)");
   const auto match = re.match(query.trimmed());
   if (!match.hasMatch()) return {};
 

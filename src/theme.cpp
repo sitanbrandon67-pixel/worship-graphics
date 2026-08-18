@@ -8,9 +8,9 @@ namespace wg {
 void applySoftShadow(QWidget *widget)
 {
   auto *shadow = new QGraphicsDropShadowEffect(widget);
-  shadow->setBlurRadius(28.0);
-  shadow->setOffset(0.0, 8.0);
-  shadow->setColor(QColor(0, 0, 0, 105));
+  shadow->setBlurRadius(18.0);
+  shadow->setOffset(0.0, 5.0);
+  shadow->setColor(QColor(0, 0, 0, 90));
   widget->setGraphicsEffect(shadow);
 }
 
@@ -21,7 +21,7 @@ QString applicationTheme()
       background: #252525;
       color: #ECECEC;
       font-family: "Segoe UI";
-      font-size: 13px;
+      font-size: 11px;
     }
 
     QWidget#wgTopBar {
@@ -30,48 +30,64 @@ QString applicationTheme()
     }
 
     QLabel#wgBrand {
-      font-size: 16px;
+      font-size: 14px;
       font-weight: 750;
       color: #F3F3F3;
-      letter-spacing: 0.8px;
+      letter-spacing: 0.5px;
     }
 
-    QLabel#wgSubtle { color: #9B9B9B; }
+    QLabel#wgSubtle {
+      color: #9B9B9B;
+      font-size: 10px;
+    }
 
     QLabel#wgSectionTitle {
       color: #D7D7D7;
       font-weight: 700;
-      font-size: 12px;
-      letter-spacing: 0.8px;
+      font-size: 10px;
+      letter-spacing: 0.6px;
     }
 
     QFrame#wgCard {
       background: #383838;
       border: 1px solid #474747;
-      border-radius: 18px;
+      border-radius: 11px;
     }
 
     QFrame#wgFloatingBar {
       background: #343434;
       border: 1px solid #4B4B4B;
-      border-radius: 16px;
+      border-radius: 10px;
     }
 
     QPushButton {
       background: #444444;
       color: #E2E2E2;
       border: 1px solid #505050;
-      border-radius: 11px;
-      padding: 7px 11px;
-      min-height: 18px;
+      border-radius: 7px;
+      padding: 4px 7px;
+      min-height: 16px;
+      font-size: 10px;
     }
 
     QPushButton:hover {
       background: #4D4D4D;
-      border-color: #5A5A5A;
+      border-color: #616161;
     }
 
     QPushButton:pressed { background: #303030; }
+    QPushButton:disabled { color: #777777; background: #353535; border-color: #414141; }
+
+    QPushButton#wgIconButton {
+      min-width: 24px;
+      max-width: 28px;
+      min-height: 24px;
+      max-height: 28px;
+      padding: 2px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+    }
 
     QPushButton#wgSoftButton {
       background: #3B3B3B;
@@ -94,8 +110,8 @@ QString applicationTheme()
     }
 
     QPushButton#wgMode {
-      border-radius: 12px;
-      padding: 6px 12px;
+      border-radius: 7px;
+      padding: 4px 8px;
     }
 
     QPushButton#wgMode:checked {
@@ -107,15 +123,16 @@ QString applicationTheme()
     QListWidget, QTextEdit {
       background: #303030;
       border: 1px solid #484848;
-      border-radius: 13px;
+      border-radius: 8px;
       outline: 0;
       color: #E7E7E7;
       selection-background-color: #555555;
+      font-size: 10px;
     }
 
     QListWidget::item {
-      padding: 7px;
-      border-radius: 8px;
+      padding: 4px;
+      border-radius: 5px;
     }
 
     QListWidget::item:selected {
@@ -124,8 +141,8 @@ QString applicationTheme()
     }
 
     QListWidget#wgPreparedList::item {
-      margin: 2px 0;
-      padding: 8px;
+      margin: 1px 0;
+      padding: 5px;
     }
 
     QListWidget#wgTemplateLibrary {
@@ -136,22 +153,23 @@ QString applicationTheme()
     QListWidget#wgTemplateLibrary::item {
       background: #303030;
       border: 1px solid #484848;
-      border-radius: 14px;
-      padding: 7px;
+      border-radius: 8px;
+      padding: 5px;
     }
 
     QListWidget#wgTemplateLibrary::item:selected {
       background: #4A4A4A;
-      border-color: #707070;
+      border-color: #7A7A7A;
     }
 
     QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
       background: #303030;
       border: 1px solid #4A4A4A;
-      border-radius: 9px;
-      padding: 6px 8px;
+      border-radius: 6px;
+      padding: 4px 6px;
       color: #ECECEC;
-      min-height: 18px;
+      min-height: 16px;
+      font-size: 10px;
     }
 
     QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
@@ -162,19 +180,20 @@ QString applicationTheme()
       background: #333333;
       color: #ECECEC;
       selection-background-color: #555555;
+      font-size: 10px;
     }
 
-    QLabel#wgScreen {
+    QLabel#wgScreen, QWidget#wgScreen {
       background: #181818;
       border: 1px solid #454545;
-      border-radius: 15px;
-      padding: 3px;
+      border-radius: 8px;
+      padding: 2px;
     }
 
     QTabWidget#wgOperatorTabs::pane {
       background: #333333;
       border: 1px solid #474747;
-      border-radius: 14px;
+      border-radius: 8px;
       top: -1px;
     }
 
@@ -183,10 +202,11 @@ QString applicationTheme()
       color: #AFAFAF;
       border: 1px solid #444444;
       border-bottom: none;
-      padding: 7px 16px;
-      margin-right: 3px;
-      border-top-left-radius: 9px;
-      border-top-right-radius: 9px;
+      padding: 5px 10px;
+      margin-right: 2px;
+      border-top-left-radius: 6px;
+      border-top-right-radius: 6px;
+      font-size: 10px;
     }
 
     QTabBar::tab:selected {
@@ -198,7 +218,28 @@ QString applicationTheme()
     QWidget#wgTimeline {
       background: #303030;
       border: 1px solid #474747;
-      border-radius: 18px;
+      border-radius: 10px;
+    }
+
+    QScrollBar:vertical {
+      background: #2B2B2B;
+      width: 9px;
+      margin: 1px;
+    }
+    QScrollBar::handle:vertical {
+      background: #565656;
+      min-height: 24px;
+      border-radius: 4px;
+    }
+    QScrollBar:horizontal {
+      background: #2B2B2B;
+      height: 9px;
+      margin: 1px;
+    }
+    QScrollBar::handle:horizontal {
+      background: #565656;
+      min-width: 24px;
+      border-radius: 4px;
     }
   )QSS";
 }

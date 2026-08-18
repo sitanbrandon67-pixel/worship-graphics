@@ -11,10 +11,13 @@ class QCheckBox;
 
 namespace wg {
 class TimelineWidget;
+class DesignCanvasWidget;
+
 class DesignPage final : public QWidget {
   Q_OBJECT
 public:
   explicit DesignPage(QWidget *parent = nullptr);
+
 private slots:
   void rebuildLayerList();
   void refreshTemplateLibrary();
@@ -43,6 +46,7 @@ private slots:
   void alignLayerTop();
   void alignLayerCenterV();
   void alignLayerBottom();
+
 private:
   void refreshCanvas();
   void setCurrentRowSafe(int row);
@@ -50,7 +54,8 @@ private:
 
   QListWidget *templates_ = nullptr;
   QListWidget *layers_ = nullptr;
-  QLabel *canvas_ = nullptr;
+  DesignCanvasWidget *canvas_ = nullptr;
+  QLabel *canvasInfo_ = nullptr;
   QLineEdit *name_ = nullptr;
   QLineEdit *text_ = nullptr;
   QLineEdit *color_ = nullptr;

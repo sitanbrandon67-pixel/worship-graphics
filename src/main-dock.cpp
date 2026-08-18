@@ -16,9 +16,7 @@ MainDock::MainDock(QWidget *parent) : QWidget(parent)
 {
   setObjectName("wgRoot");
   setStyleSheet(applicationTheme());
-
-  // Operator can now live comfortably as a narrow OBS dock.
-  setMinimumSize(360, 260);
+  setMinimumSize(330, 230);
 
   auto *root = new QVBoxLayout(this);
   root->setContentsMargins(0, 0, 0, 0);
@@ -28,18 +26,16 @@ MainDock::MainDock(QWidget *parent) : QWidget(parent)
   top->setObjectName("wgTopBar");
 
   auto *topLayout = new QHBoxLayout(top);
-  topLayout->setContentsMargins(14, 9, 14, 9);
-  topLayout->setSpacing(8);
+  topLayout->setContentsMargins(10, 6, 10, 6);
+  topLayout->setSpacing(6);
 
   auto *brand = new QLabel("WORSHIP GRAPHICS");
   brand->setObjectName("wgBrand");
-
   auto *version = new QLabel("v" WG_VERSION);
   version->setObjectName("wgSubtle");
 
   auto *operatorMode = new QPushButton("OPERADOR");
   auto *designMode = new QPushButton("DISEÑO");
-
   operatorMode->setObjectName("wgMode");
   designMode->setObjectName("wgMode");
   operatorMode->setCheckable(true);
@@ -56,7 +52,6 @@ MainDock::MainDock(QWidget *parent) : QWidget(parent)
   topLayout->addStretch();
   topLayout->addWidget(operatorMode);
   topLayout->addWidget(designMode);
-
   root->addWidget(top);
 
   pages_ = new QStackedWidget();
@@ -66,14 +61,7 @@ MainDock::MainDock(QWidget *parent) : QWidget(parent)
 
   connect(modes, &QButtonGroup::idClicked, this, [this](int id) {
     pages_->setCurrentIndex(id);
-
-    if (id == 0) {
-      // Compact operator workspace.
-      setMinimumSize(360, 260);
-    } else {
-      // Design keeps the full editor workspace.
-      setMinimumSize(860, 620);
-    }
+    setMinimumSize(id == 0 ? QSize(330, 230) : QSize(760, 520));
   });
 }
 

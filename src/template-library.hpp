@@ -25,6 +25,9 @@ public:
   static void restoreBuiltins();
   static QString displayNameForId(const QString &templateId);
   static bool isValidTemplateId(const QString &templateId);
+  static bool isBibleTemplateId(const QString &templateId);
+  static void setBibleDefaultTemplate(const QString &templateId);
+  static QString preferredBibleTemplate();
 
   // templateId can be a built-in id (builtin:pastor, builtin:scripture, ...)
   // or the absolute .wgtpl path of a user template.

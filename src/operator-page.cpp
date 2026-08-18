@@ -6,10 +6,10 @@
 #include "template-library.hpp"
 #include "theme.hpp"
 
-#include <QComboBox>
+#include <QAbstractItemView>
+#include <QCompleter>
 #include <QFileDialog>
 #include <QFrame>
-#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -17,7 +17,10 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QShowEvent>
+#include <QStringListModel>
+#include <QStyle>
 #include <QTabWidget>
 #include <QTextEdit>
 #include <QTimer>
@@ -26,26 +29,6 @@
 namespace wg {
 
 namespace {
-QString defaultBuiltinId(const QString &kind)
-{
-  if (kind == "scripture") return "builtin:scripture";
-  if (kind == "sermon") return "builtin:sermon";
-  if (kind == "worship") return "builtin:worship";
-  if (kind == "announcement") return "builtin:announcement";
-  return "builtin:pastor";
-}
-
-QString builtinName(const QString &id)
-{
-  if (id == "builtin:pastor") return "Pastor Clean";
-  if (id == "builtin:motion") return "Motion Pieces";
-  if (id == "builtin:scripture") return "Versículo";
-  if (id == "builtin:sermon") return "Tema de prédica";
-  if (id == "builtin:worship") return "Alabanza";
-  if (id == "builtin:announcement") return "Anuncio";
-  return "Plantilla";
-}
-
 Project builtinProject(const QString &id)
 {
   if (id == "builtin:motion") return TemplateFactory::motionPiecesLowerThird();
@@ -70,48 +53,60 @@ bool fillBibleFields(Project &project, const QString &verse, const QString &refe
       foundReference = true;
     }
   }
+
   if (foundVerse && foundReference) {
     project.usage = TemplateUsage::BibleText;
     project.name = "Versículo · " + reference;
   }
   return foundVerse && foundReference;
 }
+
+QPushButton *iconButton(QWidget *owner, QStyle::StandardPixmap icon, const QString &tip)
+{
+  auto *button = new QPushButton();
+  button->setObjectName("wgIconButton");
+  button->setIcon(owner->style()->standardIcon(icon));
+  button->setIconSize({15, 15});
+  button->setToolTip(tip);
+  return button;
+}
+
+QPushButton *glyphButton(const QString &glyph, const QString &tip)
+{
+  auto *button = new QPushButton(glyph);
+  button->setObjectName("wgIconButton");
+  button->setToolTip(tip);
+  return button;
+}
 } // namespace
 
 OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
 {
   auto *root = new QVBoxLayout(this);
-  root->setContentsMargins(12, 10, 12, 10);
-  root->setSpacing(9);
+  root->setContentsMargins(8, 7, 8, 7);
+  root->setSpacing(6);
 
-  // PROGRAM - compact and always visible.
   auto *programCard = new QFrame();
   programCard->setObjectName("wgCard");
   applySoftShadow(programCard);
-
   auto *programLayout = new QVBoxLayout(programCard);
-  programLayout->setContentsMargins(12, 10, 12, 10);
-  programLayout->setSpacing(7);
+  programLayout->setContentsMargins(8, 7, 8, 7);
+  programLayout->setSpacing(5);
 
   auto *programHeader = new QHBoxLayout();
   auto *programTitle = new QLabel("PROGRAM");
   programTitle->setObjectName("wgSectionTitle");
-
   programNameLabel_ = new QLabel("Sin gráfico al aire");
   programNameLabel_->setObjectName("wgSubtle");
-
   statusLabel_ = new QLabel("● FUERA DEL AIRE");
   statusLabel_->setObjectName("wgSubtle");
-
   auto *miniButton = new QPushButton("MINI");
   miniButton->setObjectName("wgSoftButton");
   miniButton->setCheckable(true);
-  miniButton->setToolTip("Oculta el monitor y las herramientas para dejar solo los controles en vivo");
 
   programHeader->addWidget(programTitle);
-  programHeader->addSpacing(8);
-  programHeader->addWidget(programNameLabel_);
-  programHeader->addStretch();
+  programHeader->addSpacing(6);
+  programHeader->addWidget(programNameLabel_, 1);
   programHeader->addWidget(miniButton);
   programHeader->addWidget(statusLabel_);
   programLayout->addLayout(programHeader);
@@ -119,297 +114,286 @@ OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
   programScreen_ = new QLabel();
   programScreen_->setObjectName("wgScreen");
   programScreen_->setAlignment(Qt::AlignCenter);
-  programScreen_->setMinimumHeight(115);
-  programScreen_->setMaximumHeight(180);
+  programScreen_->setMinimumHeight(100);
+  programScreen_->setMaximumHeight(165);
   programLayout->addWidget(programScreen_);
-
   root->addWidget(programCard);
 
-  // Main live controls.
   auto *controlsCard = new QFrame();
   controlsCard->setObjectName("wgFloatingBar");
-  applySoftShadow(controlsCard);
-
   auto *controls = new QHBoxLayout(controlsCard);
-  controls->setContentsMargins(10, 7, 10, 7);
-  controls->setSpacing(7);
-
-  auto *previousButton = new QPushButton("←");
-  previousButton->setToolTip("Preparar el cintillo anterior");
-
+  controls->setContentsMargins(7, 5, 7, 5);
+  controls->setSpacing(5);
+  auto *previousButton = glyphButton("←", "Cintillo anterior del servicio");
   auto *airButton = new QPushButton("ENVIAR AL AIRE");
   airButton->setObjectName("wgPrimary");
-
   auto *hideButton = new QPushButton("OCULTAR");
   hideButton->setObjectName("wgDanger");
-
-  auto *nextButton = new QPushButton("→");
-  nextButton->setToolTip("Preparar el siguiente cintillo");
-
+  auto *nextButton = glyphButton("→", "Siguiente cintillo del servicio");
   controls->addWidget(previousButton);
   controls->addWidget(airButton, 1);
   controls->addWidget(hideButton);
   controls->addWidget(nextButton);
-
   root->addWidget(controlsCard);
 
-  // Tabs keep the operator dock small. Only one tool section is open at a time.
   tabs_ = new QTabWidget();
   tabs_->setObjectName("wgOperatorTabs");
 
-  // -----------------------------------------------------------
-  // SERVICE PREPARED TAB
-  // -----------------------------------------------------------
+  // ------------------------- SERVICIO -------------------------
   auto *servicePage = new QWidget();
   auto *service = new QVBoxLayout(servicePage);
-  service->setContentsMargins(8, 8, 8, 8);
-  service->setSpacing(7);
+  service->setContentsMargins(7, 7, 7, 7);
+  service->setSpacing(5);
 
-  auto *serviceTop = new QGridLayout();
-  serviceType_ = new QComboBox();
-  serviceType_->addItem("Pastor / Persona", "pastor");
-  serviceType_->addItem("Versículo", "scripture");
-  serviceType_->addItem("Tema de prédica", "sermon");
-  serviceType_->addItem("Alabanza", "worship");
-  serviceType_->addItem("Anuncio", "announcement");
-  serviceType_->addItem("Diseño actual", "current");
+  auto *templatesHeader = new QHBoxLayout();
+  auto *templatesTitle = new QLabel("PLANTILLAS");
+  templatesTitle->setObjectName("wgSectionTitle");
+  auto *reloadTemplates = iconButton(this, QStyle::SP_BrowserReload, "Actualizar biblioteca");
+  auto *addSelected = new QPushButton("+ A SERVICIO");
+  addSelected->setObjectName("wgPrimary");
+  templatesHeader->addWidget(templatesTitle);
+  templatesHeader->addStretch();
+  templatesHeader->addWidget(reloadTemplates);
+  templatesHeader->addWidget(addSelected);
+  service->addLayout(templatesHeader);
 
-  templateChoice_ = new QComboBox();
-  templateChoice_->setToolTip("Plantilla que se guardará dentro de este cintillo del Servicio preparado");
+  serviceTemplates_ = new QListWidget();
+  serviceTemplates_->setSelectionMode(QAbstractItemView::SingleSelection);
+  serviceTemplates_->setMinimumHeight(72);
+  serviceTemplates_->setMaximumHeight(118);
+  serviceTemplates_->setToolTip("Un clic prepara la plantilla. Doble clic la agrega al servicio.");
+  service->addWidget(serviceTemplates_);
 
-  auto *typeLabel = new QLabel("Tipo");
-  typeLabel->setObjectName("wgSubtle");
-  auto *templateLabel = new QLabel("Plantilla");
-  templateLabel->setObjectName("wgSubtle");
-
-  auto *addButton = new QPushButton("+ AGREGAR");
-  addButton->setObjectName("wgPrimary");
-
-  serviceTop->addWidget(typeLabel, 0, 0);
-  serviceTop->addWidget(serviceType_, 0, 1);
-  serviceTop->addWidget(templateLabel, 1, 0);
-  serviceTop->addWidget(templateChoice_, 1, 1);
-  serviceTop->addWidget(addButton, 0, 2, 2, 1);
-  serviceTop->setColumnStretch(1, 1);
-  service->addLayout(serviceTop);
+  auto *queueHeader = new QHBoxLayout();
+  auto *queueTitle = new QLabel("SERVICIO");
+  queueTitle->setObjectName("wgSectionTitle");
+  auto *upButton = iconButton(this, QStyle::SP_ArrowUp, "Subir en el servicio");
+  auto *downButton = iconButton(this, QStyle::SP_ArrowDown, "Bajar en el servicio");
+  auto *removeButton = iconButton(this, QStyle::SP_TrashIcon, "Eliminar del servicio");
+  queueHeader->addWidget(queueTitle);
+  queueHeader->addStretch();
+  queueHeader->addWidget(upButton);
+  queueHeader->addWidget(downButton);
+  queueHeader->addWidget(removeButton);
+  service->addLayout(queueHeader);
 
   serviceList_ = new QListWidget();
   serviceList_->setObjectName("wgPreparedList");
-  serviceList_->setMinimumHeight(95);
-  serviceList_->setMaximumHeight(180);
+  serviceList_->setMinimumHeight(105);
   service->addWidget(serviceList_, 1);
 
-  auto *serviceActions = new QHBoxLayout();
-  auto *upButton = new QPushButton("↑");
-  auto *downButton = new QPushButton("↓");
-  auto *removeButton = new QPushButton("ELIMINAR");
-  removeButton->setObjectName("wgDanger");
-
-  serviceActions->addWidget(upButton);
-  serviceActions->addWidget(downButton);
-  serviceActions->addStretch();
-  serviceActions->addWidget(removeButton);
-  service->addLayout(serviceActions);
-
-  preparedLabel_ = new QLabel("Selecciona un cintillo para prepararlo");
+  preparedLabel_ = new QLabel("Servicio vacío · selecciona una plantilla arriba o agrega un versículo desde Biblia");
   preparedLabel_->setObjectName("wgSubtle");
   preparedLabel_->setWordWrap(true);
   service->addWidget(preparedLabel_);
 
   tabs_->addTab(servicePage, "SERVICIO");
 
-  // -----------------------------------------------------------
-  // BIBLE TAB
-  // -----------------------------------------------------------
+  // -------------------------- BIBLIA --------------------------
   auto *biblePage = new QWidget();
   auto *bibleLayout = new QVBoxLayout(biblePage);
-  bibleLayout->setContentsMargins(8, 8, 8, 8);
-  bibleLayout->setSpacing(7);
+  bibleLayout->setContentsMargins(7, 7, 7, 7);
+  bibleLayout->setSpacing(5);
 
   auto *bibleHeader = new QHBoxLayout();
   bibleStatus_ = new QLabel("RVR1960 · importa tu XML una vez");
   bibleStatus_->setObjectName("wgSubtle");
-
-  auto *install = new QPushButton("IMPORTAR XML");
-  install->setObjectName("wgSoftButton");
-
+  bibleTemplateLabel_ = new QLabel();
+  bibleTemplateLabel_->setObjectName("wgSubtle");
+  auto *install = iconButton(this, QStyle::SP_DialogOpenButton, "Importar Biblia XML");
   bibleHeader->addWidget(bibleStatus_, 1);
+  bibleHeader->addWidget(bibleTemplateLabel_);
   bibleHeader->addWidget(install);
   bibleLayout->addLayout(bibleHeader);
 
   auto *searchRow = new QHBoxLayout();
   bibleSearch_ = new QLineEdit();
-  bibleSearch_->setPlaceholderText("Juan 3:16 · Salmos 23");
-
-  auto *searchButton = new QPushButton("BUSCAR");
-  auto *prevVerse = new QPushButton("←");
-  auto *nextVerse = new QPushButton("→");
-
+  bibleSearch_->setPlaceholderText("deu 6:4 · sal 23 · juan 3:16");
+  auto *prevVerse = glyphButton("←", "Versículo anterior");
+  auto *nextVerse = glyphButton("→", "Versículo siguiente");
   searchRow->addWidget(bibleSearch_, 1);
-  searchRow->addWidget(searchButton);
   searchRow->addWidget(prevVerse);
   searchRow->addWidget(nextVerse);
   bibleLayout->addLayout(searchRow);
 
-  auto *selectors = new QGridLayout();
-  book_ = new QComboBox();
-  chapter_ = new QComboBox();
-  verse_ = new QComboBox();
+  auto *hint = new QLabel("Escribe parte del libro, Enter completa el nombre; escribe capítulo/versículo y Enter carga.");
+  hint->setObjectName("wgSubtle");
+  hint->setWordWrap(true);
+  bibleLayout->addWidget(hint);
 
-  selectors->addWidget(new QLabel("Libro"), 0, 0);
-  selectors->addWidget(new QLabel("Cap."), 0, 1);
-  selectors->addWidget(new QLabel("Vers."), 0, 2);
-  selectors->addWidget(book_, 1, 0);
-  selectors->addWidget(chapter_, 1, 1);
-  selectors->addWidget(verse_, 1, 2);
-  bibleLayout->addLayout(selectors);
-
-  auto *selectButton = new QPushButton("CARGAR");
-  bibleLayout->addWidget(selectButton);
+  bibleSuggestionModel_ = new QStringListModel(this);
+  bibleCompleter_ = new QCompleter(bibleSuggestionModel_, this);
+  bibleCompleter_->setCaseSensitivity(Qt::CaseInsensitive);
+  bibleCompleter_->setCompletionMode(QCompleter::UnfilteredPopupCompletion);
+  bibleCompleter_->setMaxVisibleItems(8);
+  bibleSearch_->setCompleter(bibleCompleter_);
 
   bibleResult_ = new QTextEdit();
   bibleResult_->setReadOnly(true);
-  bibleResult_->setPlaceholderText("El texto bíblico aparecerá aquí.");
-  bibleResult_->setMinimumHeight(88);
-  bibleResult_->setMaximumHeight(130);
-  bibleLayout->addWidget(bibleResult_);
-
-  auto *bibleTemplateRow = new QHBoxLayout();
-  auto *bibleTemplateLabel = new QLabel("Plantilla");
-  bibleTemplateLabel->setObjectName("wgSubtle");
-  bibleTemplateChoice_ = new QComboBox();
-  bibleTemplateChoice_->setToolTip("Plantilla bíblica que se usará para PREPARAR o + A SERVICIO");
-  bibleTemplateRow->addWidget(bibleTemplateLabel);
-  bibleTemplateRow->addWidget(bibleTemplateChoice_, 1);
-  bibleLayout->addLayout(bibleTemplateRow);
-
-  auto *bibleActions = new QHBoxLayout();
-  auto *prepare = new QPushButton("PREPARAR");
-  prepare->setObjectName("wgPrimary");
+  bibleResult_->setPlaceholderText("El versículo aparecerá aquí.");
+  bibleResult_->setMinimumHeight(110);
+  bibleLayout->addWidget(bibleResult_, 1);
 
   auto *addBible = new QPushButton("+ A SERVICIO");
-
-  bibleActions->addWidget(prepare, 1);
-  bibleActions->addWidget(addBible);
-  bibleLayout->addLayout(bibleActions);
+  addBible->setObjectName("wgPrimary");
+  bibleLayout->addWidget(addBible);
 
   tabs_->addTab(biblePage, "BIBLIA");
   root->addWidget(tabs_, 1);
 
   auto &state = AppState::instance();
-
   connect(&state, &AppState::programChanged, this, &OperatorPage::refreshProgram);
   connect(&state, &AppState::onAirChanged, this, [this](bool onAir) {
     statusLabel_->setText(onAir ? "● EN VIVO" : "● FUERA DEL AIRE");
-    if (!onAir)
-      programNameLabel_->setText("Sin gráfico al aire");
+    if (!onAir) programNameLabel_->setText("Sin gráfico al aire");
   });
 
   connect(airButton, &QPushButton::clicked, this, [this, &state] {
     ensureOutputInRelevantScenes();
-
     const int row = serviceList_->currentRow();
     if (row >= 0 && row < prepared_.size())
       programNameLabel_->setText(prepared_[row].label);
     else
       programNameLabel_->setText(state.project().name);
-
     state.showPreviewOnProgram();
   });
-
   connect(hideButton, &QPushButton::clicked, &state, &AppState::hideProgram);
-
   connect(previousButton, &QPushButton::clicked, this, &OperatorPage::previousPrepared);
   connect(nextButton, &QPushButton::clicked, this, &OperatorPage::nextPrepared);
 
-  connect(serviceType_, &QComboBox::currentIndexChanged, this, &OperatorPage::refreshTemplateChoices);
+  connect(reloadTemplates, &QPushButton::clicked, this, &OperatorPage::refreshServiceTemplates);
+  connect(serviceTemplates_, &QListWidget::currentRowChanged, this, &OperatorPage::previewServiceTemplate);
+  connect(serviceTemplates_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *) { addSelectedTemplateToService(); });
+  connect(addSelected, &QPushButton::clicked, this, &OperatorPage::addSelectedTemplateToService);
   connect(serviceList_, &QListWidget::currentRowChanged, this, &OperatorPage::loadPreparedSelection);
-  connect(addButton, &QPushButton::clicked, this, &OperatorPage::addPreparedGraphic);
   connect(removeButton, &QPushButton::clicked, this, &OperatorPage::removePreparedGraphic);
   connect(upButton, &QPushButton::clicked, this, &OperatorPage::movePreparedUp);
   connect(downButton, &QPushButton::clicked, this, &OperatorPage::movePreparedDown);
 
   connect(install, &QPushButton::clicked, this, &OperatorPage::installBible);
-  connect(searchButton, &QPushButton::clicked, this, &OperatorPage::searchBible);
-  connect(bibleSearch_, &QLineEdit::returnPressed, this, &OperatorPage::searchBible);
-  connect(prepare, &QPushButton::clicked, this, &OperatorPage::prepareBibleForProgram);
-  connect(addBible, &QPushButton::clicked, this, &OperatorPage::addBibleToService);
-
+  connect(bibleSearch_, &QLineEdit::textChanged, this, &OperatorPage::updateBibleSuggestions);
+  connect(bibleSearch_, &QLineEdit::returnPressed, this, &OperatorPage::handleBibleEnter);
+  connect(bibleCompleter_, qOverload<const QString &>(&QCompleter::activated), this, &OperatorPage::acceptBibleSuggestion);
   connect(prevVerse, &QPushButton::clicked, this, [this] { navigateBible(-1); });
   connect(nextVerse, &QPushButton::clicked, this, [this] { navigateBible(1); });
+  connect(addBible, &QPushButton::clicked, this, &OperatorPage::addBibleToService);
 
-  connect(book_, &QComboBox::currentIndexChanged, this, &OperatorPage::refreshChapters);
-  connect(chapter_, &QComboBox::currentIndexChanged, this, &OperatorPage::refreshVerses);
-  connect(selectButton, &QPushButton::clicked, this, &OperatorPage::selectBibleVerse);
-
-  connect(tabs_, &QTabWidget::currentChanged, this, [this](int) { refreshTemplateChoices(); });
+  connect(tabs_, &QTabWidget::currentChanged, this, [this](int) {
+    refreshServiceTemplates();
+    refreshBibleTemplateLabel();
+  });
 
   connect(miniButton, &QPushButton::toggled, this, [this, miniButton](bool mini) {
     programScreen_->setVisible(!mini);
     tabs_->setVisible(!mini);
     miniButton->setText(mini ? "COMPLETO" : "MINI");
-    setMinimumHeight(mini ? 165 : 420);
-    setMinimumWidth(mini ? 330 : 410);
+    setMinimumHeight(mini ? 150 : 390);
+    setMinimumWidth(mini ? 320 : 390);
   });
 
-  refreshTemplateChoices();
   seedPreparedService();
+  refreshServiceTemplates();
+  refreshBibleTemplateLabel();
   refreshProgram();
-
   QTimer::singleShot(0, this, &OperatorPage::tryLoadInstalledBible);
 }
-
 
 void OperatorPage::showEvent(QShowEvent *event)
 {
   QWidget::showEvent(event);
-  refreshTemplateChoices();
+  refreshServiceTemplates();
+  refreshBibleTemplateLabel();
+}
+
+Project OperatorPage::projectForTemplateId(const QString &templateId) const
+{
+  if (templateId.startsWith("builtin:"))
+    return builtinProject(templateId);
+
+  Project project;
+  QString error;
+  if (TemplateLibrary::load(templateId, &project, &error))
+    return project;
+  return {};
+}
+
+void OperatorPage::refreshServiceTemplates()
+{
+  if (!serviceTemplates_) return;
+  const QString keep = serviceTemplates_->currentItem()
+      ? serviceTemplates_->currentItem()->data(Qt::UserRole).toString()
+      : QString();
+
+  serviceTemplates_->blockSignals(true);
+  serviceTemplates_->clear();
+
+  struct Builtin { const char *id; const char *name; };
+  const Builtin builtins[] = {
+      {"builtin:pastor", "Pastor Clean"},
+      {"builtin:motion", "Motion Pieces"},
+      {"builtin:sermon", "Tema"},
+      {"builtin:worship", "Alabanza"},
+      {"builtin:announcement", "Anuncio"}};
+
+  int restore = -1;
+  for (const Builtin &b : builtins) {
+    const QString id = QString::fromUtf8(b.id);
+    if (TemplateLibrary::isBuiltinHidden(id)) continue;
+    auto *item = new QListWidgetItem(QString::fromUtf8(b.name));
+    item->setData(Qt::UserRole, id);
+    item->setToolTip("Integrada");
+    serviceTemplates_->addItem(item);
+    if (id == keep) restore = serviceTemplates_->count() - 1;
+  }
+
+  for (const TemplateEntry &entry : TemplateLibrary::entries()) {
+    if (entry.usage == TemplateUsage::BibleText) continue;
+    auto *item = new QListWidgetItem(entry.name);
+    item->setData(Qt::UserRole, entry.filePath);
+    item->setToolTip("Mi plantilla");
+    serviceTemplates_->addItem(item);
+    if (entry.filePath == keep) restore = serviceTemplates_->count() - 1;
+  }
+
+  serviceTemplates_->blockSignals(false);
+  if (restore >= 0) serviceTemplates_->setCurrentRow(restore);
+}
+
+void OperatorPage::previewServiceTemplate(int row)
+{
+  if (row < 0 || row >= serviceTemplates_->count()) return;
+  auto *item = serviceTemplates_->item(row);
+  const QString id = item->data(Qt::UserRole).toString();
+  Project project = projectForTemplateId(id);
+  if (project.layers.isEmpty()) return;
+
+  serviceList_->clearSelection();
+  AppState::instance().loadProject(project);
+  preparedLabel_->setText("Seleccionada · " + project.name + " · pulsa + A SERVICIO o doble clic");
+}
+
+void OperatorPage::addSelectedTemplateToService()
+{
+  auto *item = serviceTemplates_->currentItem();
+  if (!item) {
+    QMessageBox::information(this, "Servicio", "Selecciona una plantilla de la lista superior.");
+    return;
+  }
+
+  Project project = projectForTemplateId(item->data(Qt::UserRole).toString());
+  if (project.layers.isEmpty()) return;
+  appendPrepared(project.name, "template", project, true);
 }
 
 void OperatorPage::seedPreparedService()
 {
   prepared_.clear();
-  const QStringList kinds = {"pastor", "scripture", "sermon", "worship", "announcement"};
-
-  for (const QString &kind : kinds) {
-    QString id = TemplateLibrary::defaultTemplate(kind);
-
-    if (id.isEmpty()) {
-      if (kind == "pastor") {
-        if (!TemplateLibrary::isBuiltinHidden("builtin:pastor")) id = "builtin:pastor";
-        else if (!TemplateLibrary::isBuiltinHidden("builtin:motion")) id = "builtin:motion";
-      } else {
-        const QString builtin = defaultBuiltinId(kind);
-        if (!TemplateLibrary::isBuiltinHidden(builtin)) id = builtin;
-      }
-    }
-
-    if (id.isEmpty()) {
-      for (const TemplateEntry &entry : TemplateLibrary::entries()) {
-        if (kind == "scripture" && entry.usage != TemplateUsage::BibleText) continue;
-        if (kind != "scripture" && entry.usage == TemplateUsage::BibleText) continue;
-        id = entry.filePath;
-        break;
-      }
-    }
-
-    if (id.isEmpty()) continue;
-    Project p = projectForTemplate(kind, id);
-    if (!p.layers.isEmpty())
-      appendPrepared(p.name, kind, p, false);
-  }
-
-  rebuildPreparedList(0);
+  rebuildPreparedList(-1);
 }
 
 void OperatorPage::appendPrepared(const QString &label, const QString &kind, const Project &project, bool select)
 {
-  PreparedGraphic item;
-  item.label = label;
-  item.kind = kind;
-  item.project = project;
-
-  prepared_.push_back(item);
+  prepared_.push_back({label, kind, project});
   rebuildPreparedList(select ? prepared_.size() - 1 : serviceList_->currentRow());
 }
 
@@ -417,16 +401,12 @@ void OperatorPage::rebuildPreparedList(int selectedRow)
 {
   serviceList_->blockSignals(true);
   serviceList_->clear();
-
-  for (int i = 0; i < prepared_.size(); ++i) {
-    const auto &entry = prepared_[i];
-    serviceList_->addItem(QString("%1.  %2").arg(i + 1).arg(entry.label));
-  }
-
+  for (int i = 0; i < prepared_.size(); ++i)
+    serviceList_->addItem(QString("%1.  %2").arg(i + 1).arg(prepared_[i].label));
   serviceList_->blockSignals(false);
 
   if (prepared_.isEmpty()) {
-    preparedLabel_->setText("Servicio preparado vacío · usa + AGREGAR");
+    preparedLabel_->setText("Servicio vacío · selecciona una plantilla o agrega un versículo desde Biblia");
     return;
   }
 
@@ -434,148 +414,25 @@ void OperatorPage::rebuildPreparedList(int selectedRow)
   serviceList_->setCurrentRow(selectedRow);
 }
 
-void OperatorPage::populateTemplateCombo(QComboBox *combo, const QString &kind) const
-{
-  if (!combo) return;
-  combo->blockSignals(true);
-  combo->clear();
-
-  if (kind == "current") {
-    combo->addItem("Diseño actual", "current");
-    combo->setEnabled(false);
-    combo->blockSignals(false);
-    return;
-  }
-  combo->setEnabled(true);
-
-  if (kind == "pastor") {
-    if (!TemplateLibrary::isBuiltinHidden("builtin:pastor"))
-      combo->addItem("Integrada · Pastor Clean", "builtin:pastor");
-    if (!TemplateLibrary::isBuiltinHidden("builtin:motion"))
-      combo->addItem("Integrada · Motion Pieces", "builtin:motion");
-  } else {
-    const QString builtin = defaultBuiltinId(kind);
-    if (!TemplateLibrary::isBuiltinHidden(builtin))
-      combo->addItem("Integrada · " + builtinName(builtin), builtin);
-  }
-
-  for (const TemplateEntry &entry : TemplateLibrary::entries()) {
-    if (kind == "scripture") {
-      if (entry.usage != TemplateUsage::BibleText) continue;
-    } else {
-      if (entry.usage == TemplateUsage::BibleText) continue;
-    }
-    combo->addItem("Mi plantilla · " + entry.name, entry.filePath);
-  }
-
-  if (combo->count() == 0) {
-    combo->addItem("Sin plantillas disponibles", QString());
-    combo->setEnabled(false);
-    combo->blockSignals(false);
-    return;
-  }
-
-  QString preferred = TemplateLibrary::defaultTemplate(kind);
-  const int preferredIndex = preferred.isEmpty() ? -1 : combo->findData(preferred);
-  combo->setCurrentIndex(preferredIndex >= 0 ? preferredIndex : 0);
-  combo->blockSignals(false);
-}
-
-void OperatorPage::refreshTemplateChoices()
-{
-  const QString kind = serviceType_ ? serviceType_->currentData().toString() : QString("pastor");
-  populateTemplateCombo(templateChoice_, kind);
-  populateTemplateCombo(bibleTemplateChoice_, "scripture");
-}
-
-Project OperatorPage::projectForTemplate(const QString &kind, const QString &templateId) const
-{
-  if (kind == "current") return AppState::instance().project();
-
-  Project project;
-  if (templateId.startsWith("builtin:")) {
-    project = builtinProject(templateId);
-  } else {
-    QString error;
-    if (!TemplateLibrary::load(templateId, &project, &error)) {
-      project = builtinProject(defaultBuiltinId(kind));
-    }
-  }
-
-  if (kind == "scripture") {
-    const QString verseText = currentPassage_.valid
-        ? currentPassage_.text
-        : QString("Porque de tal manera amó Dios al mundo...");
-    const QString referenceText = currentPassage_.valid
-        ? currentPassage_.reference
-        : QString("Juan 3:16");
-    if (!fillBibleFields(project, verseText, referenceText))
-      project = TemplateFactory::scriptureLowerThird(verseText, referenceText);
-  }
-  return project;
-}
-
-Project OperatorPage::projectForServiceKind(const QString &kind) const
-{
-  if (kind == "current") return AppState::instance().project();
-  QString id = templateChoice_ ? templateChoice_->currentData().toString() : QString();
-  if (id.isEmpty()) {
-    id = TemplateLibrary::defaultTemplate(kind);
-  }
-  if (id.isEmpty()) return Project{};
-  return projectForTemplate(kind, id);
-}
-
 void OperatorPage::loadPreparedSelection(int row)
 {
-  if (row < 0 || row >= prepared_.size())
-    return;
-
+  if (row < 0 || row >= prepared_.size()) return;
   AppState::instance().loadProject(prepared_[row].project);
-  preparedLabel_->setText("PRÓXIMO · " + prepared_[row].label + " · listo para ENVIAR AL AIRE");
-}
-
-void OperatorPage::addPreparedGraphic()
-{
-  const QString kind = serviceType_->currentData().toString();
-  Project project = projectForServiceKind(kind);
-  if (project.layers.isEmpty()) {
-    QMessageBox::information(this, "Plantillas", "No hay una plantilla disponible para este tipo. Selecciona o crea una plantilla primero.");
-    return;
-  }
-
-  QString label = project.name;
-  if (kind == "current") {
-    label = "Diseño actual · " + project.name;
-  } else if (templateChoice_ && templateChoice_->currentIndex() >= 0) {
-    label = serviceType_->currentText() + " · " + templateChoice_->currentText().replace("Integrada · ", "").replace("Mi plantilla · ", "");
-  }
-
-  appendPrepared(label, kind, project, true);
+  preparedLabel_->setText("PRÓXIMO · " + prepared_[row].label);
 }
 
 void OperatorPage::removePreparedGraphic()
 {
   const int row = serviceList_->currentRow();
-  if (row < 0 || row >= prepared_.size())
-    return;
-
+  if (row < 0 || row >= prepared_.size()) return;
   prepared_.removeAt(row);
-
-  if (prepared_.isEmpty()) {
-    rebuildPreparedList(-1);
-    return;
-  }
-
-  rebuildPreparedList(qMin(row, prepared_.size() - 1));
+  rebuildPreparedList(prepared_.isEmpty() ? -1 : qMin(row, prepared_.size() - 1));
 }
 
 void OperatorPage::movePreparedUp()
 {
   const int row = serviceList_->currentRow();
-  if (row <= 0 || row >= prepared_.size())
-    return;
-
+  if (row <= 0 || row >= prepared_.size()) return;
   prepared_.move(row, row - 1);
   rebuildPreparedList(row - 1);
 }
@@ -583,38 +440,24 @@ void OperatorPage::movePreparedUp()
 void OperatorPage::movePreparedDown()
 {
   const int row = serviceList_->currentRow();
-  if (row < 0 || row >= prepared_.size() - 1)
-    return;
-
+  if (row < 0 || row >= prepared_.size() - 1) return;
   prepared_.move(row, row + 1);
   rebuildPreparedList(row + 1);
 }
 
 void OperatorPage::previousPrepared()
 {
-  if (prepared_.isEmpty())
-    return;
-
+  if (prepared_.isEmpty()) return;
   int row = serviceList_->currentRow();
-  if (row < 0)
-    row = 0;
-  else
-    row = (row - 1 + prepared_.size()) % prepared_.size();
-
+  row = row < 0 ? 0 : (row - 1 + prepared_.size()) % prepared_.size();
   serviceList_->setCurrentRow(row);
 }
 
 void OperatorPage::nextPrepared()
 {
-  if (prepared_.isEmpty())
-    return;
-
+  if (prepared_.isEmpty()) return;
   int row = serviceList_->currentRow();
-  if (row < 0)
-    row = 0;
-  else
-    row = (row + 1) % prepared_.size();
-
+  row = row < 0 ? 0 : (row + 1) % prepared_.size();
   serviceList_->setCurrentRow(row);
 }
 
@@ -623,7 +466,7 @@ void OperatorPage::tryLoadInstalledBible()
   QString error;
   if (bible_.loadInstalled(&error)) {
     bibleStatus_->setText("● " + bible_.translationName() + " · OFFLINE");
-    refreshBibleSelectors();
+    updateBibleSuggestions(bibleSearch_->text());
   } else {
     bibleStatus_->setText("RVR1960 · importa tu XML una vez");
   }
@@ -631,9 +474,8 @@ void OperatorPage::tryLoadInstalledBible()
 
 void OperatorPage::installBible()
 {
-  const QString file = QFileDialog::getOpenFileName(this, "Importar Biblia RVR1960", {}, "Biblia XML (*.xml)");
-  if (file.isEmpty())
-    return;
+  const QString file = QFileDialog::getOpenFileName(this, "Importar Biblia", {}, "Biblia XML (*.xml)");
+  if (file.isEmpty()) return;
 
   QString error;
   if (!bible_.installFromXml(file, &error)) {
@@ -642,136 +484,146 @@ void OperatorPage::installBible()
   }
 
   bibleStatus_->setText("● " + bible_.translationName() + " · OFFLINE");
-  refreshBibleSelectors();
   bibleSearch_->setFocus();
+  updateBibleSuggestions(bibleSearch_->text());
 }
 
-void OperatorPage::refreshBibleSelectors()
+void OperatorPage::updateBibleSuggestions(const QString &text)
 {
-  book_->blockSignals(true);
-  book_->clear();
-  book_->addItems(bible_.bookNames());
-  book_->blockSignals(false);
-  refreshChapters();
+  if (!bibleSuggestionModel_) return;
+  const QStringList suggestions = bible_.bookSuggestions(text, 8);
+  bibleSuggestionModel_->setStringList(suggestions);
+  if (bibleCompleter_ && !text.trimmed().isEmpty() && !suggestions.isEmpty())
+    bibleCompleter_->complete();
 }
 
-void OperatorPage::refreshChapters()
+void OperatorPage::acceptBibleSuggestion(const QString &bookName)
 {
-  chapter_->blockSignals(true);
-  chapter_->clear();
+  if (bookName.isEmpty()) return;
+  const QString current = bibleSearch_->text().trimmed();
 
-  const int count = bible_.chapterCount(book_->currentIndex());
-  for (int i = 1; i <= count; ++i)
-    chapter_->addItem(QString::number(i));
+  int digitIndex = -1;
+  for (int i = 0; i < current.size(); ++i) {
+    if (current.at(i).isDigit()) {
+      digitIndex = i;
+      break;
+    }
+  }
 
-  chapter_->blockSignals(false);
-  refreshVerses();
+  const QString tail = digitIndex >= 0 ? current.mid(digitIndex).trimmed() : QString();
+  const QString next = bookName + (tail.isEmpty() ? QString(" ") : QString(" ") + tail);
+  bibleSearch_->setText(next);
+  bibleSearch_->setCursorPosition(next.size());
 }
 
-void OperatorPage::refreshVerses()
-{
-  verse_->clear();
-  if (chapter_->currentIndex() < 0)
-    return;
-
-  const int count = bible_.verseCount(book_->currentIndex(), chapter_->currentIndex() + 1);
-  for (int i = 1; i <= count; ++i)
-    verse_->addItem(QString::number(i));
-}
-
-void OperatorPage::searchBible()
+void OperatorPage::handleBibleEnter()
 {
   if (!bible_.isLoaded()) {
-    bibleStatus_->setText("Importa primero el XML RVR1960.");
+    bibleStatus_->setText("Importa primero la Biblia XML.");
     return;
   }
 
-  showPassage(bible_.search(bibleSearch_->text()));
+  if (bibleCompleter_ && bibleCompleter_->popup()->isVisible() && bibleCompleter_->popup()->currentIndex().isValid()) {
+    const QString suggestion = bibleCompleter_->popup()->currentIndex().data().toString();
+    if (!suggestion.isEmpty()) {
+      acceptBibleSuggestion(suggestion);
+      bibleCompleter_->popup()->hide();
+      return;
+    }
+  }
+
+  const QString query = bibleSearch_->text().trimmed();
+  BiblePassage passage = bible_.search(query);
+  if (passage.valid) {
+    showPassage(passage);
+    return;
+  }
+
+  const QString completed = bible_.completeReference(query);
+  if (!completed.isEmpty() && completed.trimmed() != query) {
+    bibleSearch_->setText(completed);
+    bibleSearch_->setCursorPosition(completed.size());
+    passage = bible_.search(completed);
+    if (passage.valid) showPassage(passage);
+    return;
+  }
+
+  bibleResult_->setPlainText("No se encontró. Ejemplos: deu 6:4 · sal 23 · juan 3:16");
 }
 
-void OperatorPage::selectBibleVerse()
+Project OperatorPage::projectForBiblePassage(const BiblePassage &passage) const
 {
-  if (!bible_.isLoaded() || book_->currentIndex() < 0 ||
-      chapter_->currentIndex() < 0 || verse_->currentIndex() < 0)
-    return;
+  if (!passage.valid) return {};
+  const QString id = TemplateLibrary::preferredBibleTemplate();
+  Project project = id.isEmpty() ? Project{} : projectForTemplateId(id);
 
-  showPassage(bible_.passage(book_->currentIndex(),
-                             chapter_->currentIndex() + 1,
-                             verse_->currentIndex() + 1,
-                             verse_->currentIndex() + 1));
+  if (project.layers.isEmpty() || !fillBibleFields(project, passage.text, passage.reference))
+    project = TemplateFactory::scriptureLowerThird(passage.text, passage.reference);
+
+  return project;
 }
 
 void OperatorPage::showPassage(const BiblePassage &passage)
 {
   if (!passage.valid) {
-    bibleResult_->setPlainText("No se encontró la referencia. Ejemplo: Juan 3:16 o Salmos 23.");
+    bibleResult_->setPlainText("No se encontró la referencia.");
     return;
   }
 
   currentPassage_ = passage;
+  bibleSearch_->setText(passage.reference);
   bibleResult_->setPlainText(passage.reference + "\n\n" + passage.text);
 
-  book_->setCurrentIndex(passage.bookIndex);
-  chapter_->setCurrentIndex(passage.chapter - 1);
-
-  if (passage.verseStart > 0)
-    verse_->setCurrentIndex(passage.verseStart - 1);
+  const Project preview = projectForBiblePassage(passage);
+  if (!preview.layers.isEmpty())
+    AppState::instance().loadProject(preview);
+  refreshBibleTemplateLabel();
 }
 
 void OperatorPage::navigateBible(int delta)
 {
   if (!currentPassage_.valid) {
-    searchBible();
+    handleBibleEnter();
     return;
   }
-
   showPassage(bible_.adjacent(currentPassage_, delta));
 }
 
-void OperatorPage::prepareBibleForProgram()
+void OperatorPage::refreshBibleTemplateLabel()
 {
-  if (!currentPassage_.valid)
-    return;
-
-  const QString id = bibleTemplateChoice_ && bibleTemplateChoice_->currentIndex() >= 0
-      ? bibleTemplateChoice_->currentData().toString()
-      : defaultBuiltinId("scripture");
-  AppState::instance().loadProject(projectForTemplate("scripture", id));
-  preparedLabel_->setText("PRÓXIMO · " + currentPassage_.reference + " · aún no está al aire");
+  const QString id = TemplateLibrary::preferredBibleTemplate();
+  const QString name = TemplateLibrary::displayNameForId(id);
+  bibleTemplateLabel_->setText(name.isEmpty() ? "Biblia: sin plantilla" : "Biblia: ★ " + name);
 }
 
 void OperatorPage::addBibleToService()
 {
-  if (!currentPassage_.valid)
+  if (!currentPassage_.valid) {
+    handleBibleEnter();
+    if (!currentPassage_.valid) return;
+  }
+
+  Project project = projectForBiblePassage(currentPassage_);
+  if (project.layers.isEmpty()) {
+    QMessageBox::information(this, "Biblia", "Crea o selecciona una plantilla bíblica en Diseño.");
     return;
+  }
 
-  const QString id = bibleTemplateChoice_ && bibleTemplateChoice_->currentIndex() >= 0
-      ? bibleTemplateChoice_->currentData().toString()
-      : defaultBuiltinId("scripture");
-  Project project = projectForTemplate("scripture", id);
-  QString templateName = bibleTemplateChoice_ ? bibleTemplateChoice_->currentText() : QString("Versículo");
-  templateName.replace("Integrada · ", "");
-  templateName.replace("Mi plantilla · ", "");
-
-  appendPrepared("Versículo · " + currentPassage_.reference + " · " + templateName,
-                 "scripture", project, true);
-
+  appendPrepared("Versículo · " + currentPassage_.reference, "scripture", project, true);
   tabs_->setCurrentIndex(0);
 }
 
 void OperatorPage::refreshProgram()
 {
   const QImage frame = AppState::instance().programFrame();
-
   if (frame.isNull()) {
     programScreen_->clear();
     return;
   }
 
-  programScreen_->setPixmap(
-      QPixmap::fromImage(frame).scaled(programScreen_->size(),
-                                     Qt::KeepAspectRatio,
-                                     Qt::SmoothTransformation));
+  programScreen_->setPixmap(QPixmap::fromImage(frame).scaled(programScreen_->size(),
+                                                                  Qt::KeepAspectRatio,
+                                                                  Qt::SmoothTransformation));
 }
 
 } // namespace wg

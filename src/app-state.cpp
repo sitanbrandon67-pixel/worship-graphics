@@ -2,6 +2,8 @@
 #include "graphics-renderer.hpp"
 #include "template-factory.hpp"
 
+#include <obs.h>
+
 #include <QHash>
 #include <QSet>
 #include <QWriteLocker>
@@ -9,6 +11,35 @@
 #include <algorithm>
 
 namespace wg {
+
+namespace {
+Project adaptProjectToObsCanvas(const Project &source)
+{
+  Project out = source;
+  struct obs_video_info ovi = {};
+  if (!obs_get_video_info(&ovi) || ovi.base_width == 0 || ovi.base_height == 0)
+    return out;
+
+  const QSize target(static_cast<int>(ovi.base_width), static_cast<int>(ovi.base_height));
+  if (out.canvas.width() <= 0 || out.canvas.height() <= 0 || out.canvas == target)
+    return out;
+
+  const qreal sx = qreal(target.width()) / qreal(out.canvas.width());
+  const qreal sy = qreal(target.height()) / qreal(out.canvas.height());
+  const qreal uniform = qMin(sx, sy);
+
+  for (auto &layer : out.layers) {
+    layer.position = QPointF(layer.position.x() * sx, layer.position.y() * sy);
+    layer.size = QSizeF(layer.size.width() * sx, layer.size.height() * sy);
+    layer.fontSize = qMax(6, qRound(layer.fontSize * uniform));
+    layer.minFontSize = qMax(6, qRound(layer.minFontSize * uniform));
+    layer.cornerRadius *= uniform;
+  }
+
+  out.canvas = target;
+  return out;
+}
+} // namespace
 
 AppState &AppState::instance()
 {
@@ -31,7 +62,7 @@ AppState::AppState()
 
 void AppState::loadProject(const Project &project)
 {
-  project_ = project;
+  project_ = adaptProjectToObsCanvas(project);
   if (project_.usage == TemplateUsage::BibleText) {
     bibleTemplateProject_ = project_;
     hasBibleTemplate_ = true;

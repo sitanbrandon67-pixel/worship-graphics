@@ -1,4 +1,5 @@
 #include "design-page.hpp"
+#include "design-canvas-widget.hpp"
 #include "app-state.hpp"
 #include "graphics-renderer.hpp"
 #include "template-factory.hpp"
@@ -26,6 +27,7 @@
 #include <QPixmap>
 #include <QScrollArea>
 #include <QSpinBox>
+#include <QStyle>
 #include <QSplitter>
 #include <QResizeEvent>
 #include <QVBoxLayout>
@@ -96,48 +98,64 @@ static QIcon projectIcon(const Project &project)
   return QIcon(QPixmap::fromImage(img));
 }
 
+
+static QPushButton *iconButton(QWidget *owner, QStyle::StandardPixmap icon, const QString &tip)
+{
+  auto *button = new QPushButton();
+  button->setObjectName("wgIconButton");
+  button->setIcon(owner->style()->standardIcon(icon));
+  button->setIconSize({15, 15});
+  button->setToolTip(tip);
+  return button;
+}
+
+static QPushButton *glyphButton(const QString &glyph, const QString &tip)
+{
+  auto *button = new QPushButton(glyph);
+  button->setObjectName("wgIconButton");
+  button->setToolTip(tip);
+  return button;
+}
+
 DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
 {
   auto *root = new QVBoxLayout(this);
-  root->setContentsMargins(20, 18, 20, 18);
-  root->setSpacing(12);
+  root->setContentsMargins(10, 8, 10, 8);
+  root->setSpacing(7);
 
   auto *libraryCard = new QFrame();
   libraryCard->setObjectName("wgCard");
   applySoftShadow(libraryCard);
   auto *libraryLayout = new QVBoxLayout(libraryCard);
+  libraryLayout->setContentsMargins(9, 8, 9, 8);
+  libraryLayout->setSpacing(5);
+
   auto *libraryTitle = new QHBoxLayout();
-  auto *title = new QLabel("BIBLIOTECA DE PLANTILLAS"); title->setObjectName("wgSectionTitle");
-  auto *save = new QPushButton("GUARDAR PLANTILLA"); save->setObjectName("wgSoftButton");
-  libraryTitle->addWidget(title); libraryTitle->addStretch(); libraryTitle->addWidget(save);
+  auto *title = new QLabel("PLANTILLAS");
+  title->setObjectName("wgSectionTitle");
+  auto *selectedTemplateLabel = new QLabel("Selecciona una plantilla");
+  selectedTemplateLabel->setObjectName("wgSubtle");
+  auto *bibleDefaultLabel = new QLabel();
+  bibleDefaultLabel->setObjectName("wgSubtle");
+
+  auto *save = iconButton(this, QStyle::SP_DialogSaveButton, "Guardar el diseño actual como plantilla");
+  auto *openTemplate = iconButton(this, QStyle::SP_DialogOpenButton, "Abrir la plantilla seleccionada en Diseño");
+  auto *bibleDefaultButton = glyphButton("★", "Usar esta plantilla como la plantilla bíblica predeterminada");
+  auto *deleteTemplate = iconButton(this, QStyle::SP_TrashIcon, "Eliminar plantilla personal u ocultar una integrada");
+  deleteTemplate->setObjectName("wgIconButton");
+  auto *restoreBuiltins = iconButton(this, QStyle::SP_BrowserReload, "Restaurar plantillas integradas ocultas");
+
+  libraryTitle->addWidget(title);
+  libraryTitle->addSpacing(8);
+  libraryTitle->addWidget(selectedTemplateLabel, 1);
+  libraryTitle->addWidget(bibleDefaultLabel);
+  libraryTitle->addWidget(openTemplate);
+  libraryTitle->addWidget(bibleDefaultButton);
+  libraryTitle->addWidget(save);
+  libraryTitle->addWidget(deleteTemplate);
+  libraryTitle->addWidget(restoreBuiltins);
   libraryLayout->addLayout(libraryTitle);
 
-  auto *libraryActions = new ResponsiveGrid(185);
-  auto *templateTarget = new QComboBox();
-  templateTarget->addItem("Pastor / Persona", "pastor");
-  templateTarget->addItem("Versículo", "scripture");
-  templateTarget->addItem("Tema de prédica", "sermon");
-  templateTarget->addItem("Alabanza", "worship");
-  templateTarget->addItem("Anuncio", "announcement");
-  auto *useTemplate = new QPushButton("USAR COMO PREDETERMINADA");
-  useTemplate->setObjectName("wgPrimary");
-  auto *openTemplate = new QPushButton("ABRIR EN DISEÑO");
-  auto *deleteTemplate = new QPushButton("ELIMINAR / OCULTAR");
-  deleteTemplate->setObjectName("wgDanger");
-  auto *restoreBuiltins = new QPushButton("RESTAURAR INTEGRADAS");
-  auto *activeTemplateLabel = new QLabel("Predeterminada: integrada");
-  activeTemplateLabel->setObjectName("wgSubtle");
-  auto *selectedTemplateLabel = new QLabel("Seleccionada: ninguna");
-  selectedTemplateLabel->setObjectName("wgSubtle");
-  selectedTemplateLabel->setWordWrap(true);
-  libraryActions->addItem(templateTarget);
-  libraryActions->addItem(useTemplate);
-  libraryActions->addItem(openTemplate);
-  libraryActions->addItem(deleteTemplate);
-  libraryActions->addItem(restoreBuiltins);
-  libraryActions->addItem(activeTemplateLabel);
-  libraryLayout->addWidget(selectedTemplateLabel);
-  libraryLayout->addWidget(libraryActions);
   templates_ = new QListWidget();
   templates_->setObjectName("wgTemplateLibrary");
   templates_->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -150,34 +168,37 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   templates_->setFlow(QListView::LeftToRight);
   templates_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   templates_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  templates_->setIconSize({160, 90});
-  templates_->setSpacing(10);
-  templates_->setFixedHeight(132);
+  templates_->setIconSize({132, 74});
+  templates_->setSpacing(6);
+  templates_->setFixedHeight(96);
   libraryLayout->addWidget(templates_);
   root->addWidget(libraryCard);
 
-  auto *toolbar = new ResponsiveGrid(145);
-  auto *importPsd = new QPushButton("IMPORTAR PSD");
-  auto *addText = new QPushButton("+ TEXTO");
-  auto *addShape = new QPushButton("+ FORMA");
-  auto *addImage = new QPushButton("+ IMAGEN");
-  auto *duplicate = new QPushButton("DUPLICAR");
-  auto *remove = new QPushButton("ELIMINAR"); remove->setObjectName("wgDanger");
-  auto *stagger = new QPushButton("ESCALONAR 80ms");
-  toolbar->addItem(importPsd);
-  toolbar->addItem(addText);
-  toolbar->addItem(addShape);
-  toolbar->addItem(addImage);
-  toolbar->addItem(duplicate);
-  toolbar->addItem(remove);
-  toolbar->addItem(stagger);
-  root->addWidget(toolbar);
+  auto *toolbar = new QHBoxLayout();
+  toolbar->setSpacing(4);
+  auto *importPsd = glyphButton("Ps", "Importar PSD/PSB");
+  auto *addText = glyphButton("T", "Agregar capa de texto");
+  auto *addShape = glyphButton("▭", "Agregar forma");
+  auto *addImage = iconButton(this, QStyle::SP_FileIcon, "Agregar imagen");
+  auto *duplicate = glyphButton("⧉", "Duplicar capa");
+  auto *remove = iconButton(this, QStyle::SP_TrashIcon, "Eliminar capa");
+  remove->setObjectName("wgIconButton");
+  auto *stagger = glyphButton("⇥", "Escalonar animaciones 80 ms");
+  toolbar->addWidget(importPsd);
+  toolbar->addWidget(addText);
+  toolbar->addWidget(addShape);
+  toolbar->addWidget(addImage);
+  toolbar->addWidget(duplicate);
+  toolbar->addWidget(remove);
+  toolbar->addWidget(stagger);
+  toolbar->addStretch();
+  root->addLayout(toolbar);
 
   auto *splitter = new QSplitter(Qt::Horizontal);
   splitter->setChildrenCollapsible(false);
   splitter->setHandleWidth(8);
 
-  auto *layersCard = new QFrame(); layersCard->setObjectName("wgCard"); layersCard->setMinimumWidth(220); layersCard->setMaximumWidth(360); applySoftShadow(layersCard);
+  auto *layersCard = new QFrame(); layersCard->setObjectName("wgCard"); layersCard->setMinimumWidth(190); layersCard->setMaximumWidth(320); applySoftShadow(layersCard);
   layersCard->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
   auto *layersLayout = new QVBoxLayout(layersCard);
   auto *layersTitle = new QLabel("CAPAS"); layersTitle->setObjectName("wgSectionTitle"); layersLayout->addWidget(layersTitle);
@@ -185,27 +206,30 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   layers_->setSelectionMode(QAbstractItemView::ExtendedSelection);
   layersLayout->addWidget(layers_, 1);
   auto *layerActions1 = new QHBoxLayout();
-  auto *up = new QPushButton("↑"); auto *down = new QPushButton("↓"); auto *visible = new QPushButton("VISIBILIDAD"); auto *lock = new QPushButton("BLOQUEAR");
-  layerActions1->addWidget(up); layerActions1->addWidget(down); layerActions1->addWidget(visible); layerActions1->addWidget(lock);
+  layerActions1->setSpacing(4);
+  auto *up = iconButton(this, QStyle::SP_ArrowUp, "Subir capa");
+  auto *down = iconButton(this, QStyle::SP_ArrowDown, "Bajar capa");
+  auto *visible = glyphButton("◉", "Mostrar / ocultar capa");
+  auto *lock = glyphButton("L", "Bloquear / desbloquear capa");
+  auto *group = glyphButton("G", "Agrupar capas seleccionadas");
+  auto *ungroup = glyphButton("U", "Desagrupar");
+  layerActions1->addWidget(up); layerActions1->addWidget(down); layerActions1->addWidget(visible); layerActions1->addWidget(lock); layerActions1->addWidget(group); layerActions1->addWidget(ungroup);
+  layerActions1->addStretch();
   layersLayout->addLayout(layerActions1);
-  auto *layerActions2 = new QHBoxLayout();
-  auto *group = new QPushButton("AGRUPAR"); auto *ungroup = new QPushButton("DESAGRUPAR");
-  layerActions2->addWidget(group); layerActions2->addWidget(ungroup); layersLayout->addLayout(layerActions2);
 
   auto *canvasCard = new QFrame(); canvasCard->setObjectName("wgCard"); applySoftShadow(canvasCard);
-  canvasCard->setMinimumWidth(360);
+  canvasCard->setMinimumWidth(320);
   canvasCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   auto *canvasLayout = new QVBoxLayout(canvasCard);
   auto *canvasHeader = new QHBoxLayout();
-  auto *canvasTitle = new QLabel("CANVAS · PREVISUALIZACIÓN DE TIEMPO"); canvasTitle->setObjectName("wgSectionTitle");
-  auto *canvasInfo = new QLabel("1920×1080 · ARRASTRA EL PLAYHEAD"); canvasInfo->setObjectName("wgSubtle");
-  canvasHeader->addWidget(canvasTitle); canvasHeader->addStretch(); canvasHeader->addWidget(canvasInfo); canvasLayout->addLayout(canvasHeader);
-  canvas_ = new QLabel(); canvas_->setObjectName("wgScreen"); canvas_->setAlignment(Qt::AlignCenter); canvas_->setMinimumSize(320, 180);
-  canvas_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  auto *canvasTitle = new QLabel("CANVAS"); canvasTitle->setObjectName("wgSectionTitle");
+  canvasInfo_ = new QLabel(); canvasInfo_->setObjectName("wgSubtle");
+  canvasHeader->addWidget(canvasTitle); canvasHeader->addStretch(); canvasHeader->addWidget(canvasInfo_); canvasLayout->addLayout(canvasHeader);
+  canvas_ = new DesignCanvasWidget();
   canvasLayout->addWidget(canvas_, 1);
 
   auto *propertiesCard = new QFrame(); propertiesCard->setObjectName("wgCard"); applySoftShadow(propertiesCard);
-  propertiesCard->setMinimumWidth(285);
+  propertiesCard->setMinimumWidth(250);
   propertiesCard->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
   auto *propertiesLayout = new QVBoxLayout(propertiesCard);
   auto *propTitle = new QLabel("PROPIEDADES"); propTitle->setObjectName("wgSectionTitle"); propertiesLayout->addWidget(propTitle);
@@ -249,11 +273,16 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
 
   auto *alignTitle = new QLabel("ALINEAR CAPA EN CANVAS"); alignTitle->setObjectName("wgSectionTitle"); propertiesLayout->addWidget(alignTitle);
   auto *alignRow1 = new QHBoxLayout();
-  auto *alignLeft = new QPushButton("IZQ"); auto *alignCenterH = new QPushButton("CENTRO H"); auto *alignRight = new QPushButton("DER");
-  alignRow1->addWidget(alignLeft); alignRow1->addWidget(alignCenterH); alignRow1->addWidget(alignRight); propertiesLayout->addLayout(alignRow1);
-  auto *alignRow2 = new QHBoxLayout();
-  auto *alignTop = new QPushButton("ARRIBA"); auto *alignCenterV = new QPushButton("CENTRO V"); auto *alignBottom = new QPushButton("ABAJO");
-  alignRow2->addWidget(alignTop); alignRow2->addWidget(alignCenterV); alignRow2->addWidget(alignBottom); propertiesLayout->addLayout(alignRow2);
+  alignRow1->setSpacing(4);
+  auto *alignLeft = glyphButton("←|", "Alinear capa a la izquierda");
+  auto *alignCenterH = glyphButton("↔", "Centrar capa horizontalmente");
+  auto *alignRight = glyphButton("|→", "Alinear capa a la derecha");
+  auto *alignTop = glyphButton("↑", "Alinear capa arriba");
+  auto *alignCenterV = glyphButton("↕", "Centrar capa verticalmente");
+  auto *alignBottom = glyphButton("↓", "Alinear capa abajo");
+  alignRow1->addWidget(alignLeft); alignRow1->addWidget(alignCenterH); alignRow1->addWidget(alignRight);
+  alignRow1->addWidget(alignTop); alignRow1->addWidget(alignCenterV); alignRow1->addWidget(alignBottom); alignRow1->addStretch();
+  propertiesLayout->addLayout(alignRow1);
 
   auto *apply = new QPushButton("APLICAR CAMBIOS"); apply->setObjectName("wgPrimary"); propertiesLayout->addWidget(apply); propertiesLayout->addStretch();
 
@@ -262,7 +291,7 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   propertiesScroll->setWidgetResizable(true);
   propertiesScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   propertiesScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-  propertiesScroll->setMinimumWidth(300);
+  propertiesScroll->setMinimumWidth(260);
   propertiesScroll->setWidget(propertiesCard);
 
   splitter->addWidget(layersCard);
@@ -271,7 +300,7 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   splitter->setStretchFactor(0, 0);
   splitter->setStretchFactor(1, 1);
   splitter->setStretchFactor(2, 0);
-  splitter->setSizes({250, 940, 330});
+  splitter->setSizes({215, 860, 285});
 
   root->addWidget(splitter, 1);
 
@@ -297,7 +326,7 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   timelineLayout->addWidget(timelineControls);
 
   timeline_ = new TimelineWidget();
-  timeline_->setMinimumWidth(760);
+  timeline_->setMinimumWidth(680);
   auto *timelineScroll = new QScrollArea();
   timelineScroll->setObjectName("wgTimelineScroll");
   timelineScroll->setFrameShape(QFrame::NoFrame);
@@ -306,7 +335,7 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   timelineScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   timelineScroll->setWidget(timeline_);
   timelineLayout->addWidget(timelineScroll);
-  timelineCard->setMinimumHeight(270);
+  timelineCard->setMinimumHeight(215);
   root->addWidget(timelineCard);
 
   auto &state = AppState::instance();
@@ -330,26 +359,25 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   connect(save, &QPushButton::clicked, this, &DesignPage::saveTemplate);
   connect(templates_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *) { loadSelectedTemplate(); });
 
-  auto refreshActiveTemplateLabel = [templateTarget, activeTemplateLabel]() {
-    const QString kind = templateTarget->currentData().toString();
-    const QString id = TemplateLibrary::defaultTemplate(kind);
+  auto refreshBibleDefaultLabel = [bibleDefaultLabel]() {
+    const QString id = TemplateLibrary::preferredBibleTemplate();
     const QString name = TemplateLibrary::displayNameForId(id);
-    activeTemplateLabel->setText("Predeterminada: " + (name.isEmpty() ? QString("ninguna elegida") : name));
+    bibleDefaultLabel->setText(name.isEmpty() ? QString("Biblia: sin plantilla") : QString("Biblia: ★ %1").arg(name));
   };
 
-  auto refreshSelectedTemplateLabel = [this, selectedTemplateLabel, useTemplate, deleteTemplate, openTemplate]() {
+  auto refreshSelectedTemplateLabel = [this, selectedTemplateLabel, bibleDefaultButton, deleteTemplate, openTemplate]() {
     auto *item = templates_->currentItem();
     if (!item) {
-      selectedTemplateLabel->setText("Seleccionada: ninguna");
-      useTemplate->setEnabled(false);
+      selectedTemplateLabel->setText("Selecciona una plantilla");
+      bibleDefaultButton->setEnabled(false);
       deleteTemplate->setEnabled(false);
       openTemplate->setEnabled(false);
       return;
     }
+
     const QString id = item->data(Qt::UserRole).toString();
-    const bool builtin = id.startsWith("builtin:");
-    selectedTemplateLabel->setText(QString("Seleccionada: %1 · %2").arg(item->text(), builtin ? "INTEGRADA" : "MÍA"));
-    useTemplate->setEnabled(true);
+    selectedTemplateLabel->setText("Seleccionada: " + TemplateLibrary::displayNameForId(id));
+    bibleDefaultButton->setEnabled(TemplateLibrary::isBibleTemplateId(id));
     deleteTemplate->setEnabled(true);
     openTemplate->setEnabled(true);
   };
@@ -363,83 +391,67 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
     refreshSelectedTemplateLabel();
   });
 
-  connect(templateTarget, &QComboBox::currentIndexChanged, this, [refreshActiveTemplateLabel](int) {
-    refreshActiveTemplateLabel();
-  });
-
   connect(openTemplate, &QPushButton::clicked, this, [this] {
-    if (!templates_->currentItem()) return;
-    loadSelectedTemplate();
+    if (templates_->currentItem()) loadSelectedTemplate();
   });
 
-  connect(useTemplate, &QPushButton::clicked, this, [this, templateTarget, refreshActiveTemplateLabel] {
+  connect(bibleDefaultButton, &QPushButton::clicked, this, [this, refreshBibleDefaultLabel] {
     auto *item = templates_->currentItem();
-    if (!item) {
-      QMessageBox::information(this, "Plantillas", "Haz un clic sobre la plantilla que quieres seleccionar.");
-      return;
-    }
-
+    if (!item) return;
     const QString id = item->data(Qt::UserRole).toString();
-    const QString kind = templateTarget->currentData().toString();
-
-    if (kind == "scripture") {
-      bool validBible = id == "builtin:scripture";
-      if (!id.startsWith("builtin:")) {
-        Project p; QString error;
-        if (TemplateLibrary::load(id, &p, &error))
-          validBible = p.usage == TemplateUsage::BibleText;
-      }
-      if (!validBible) {
-        QMessageBox::warning(this, "Plantilla bíblica",
-                             "Para Versículo usa una plantilla marcada como PLANTILLA BÍBLICA con {{VERSICULO}} y {{REFERENCIA}}.");
-        return;
-      }
-    }
-
-    TemplateLibrary::setDefaultTemplate(kind, id);
-    if (TemplateLibrary::defaultTemplate(kind) != id) {
-      QMessageBox::warning(this, "Plantilla predeterminada", "No se pudo guardar esta plantilla como predeterminada.");
+    if (!TemplateLibrary::isBibleTemplateId(id)) {
+      QMessageBox::information(this, "Plantilla bíblica", "Esta plantilla no contiene {{VERSICULO}} y {{REFERENCIA}}.");
       return;
     }
-    refreshActiveTemplateLabel();
-    QMessageBox::information(this, "Plantilla predeterminada",
-                             item->text() + " quedó como predeterminada para " + templateTarget->currentText() + ".");
+    TemplateLibrary::setBibleDefaultTemplate(id);
+    refreshBibleDefaultLabel();
   });
 
-  connect(deleteTemplate, &QPushButton::clicked, this, [this, refreshActiveTemplateLabel, refreshSelectedTemplateLabel] {
+  connect(deleteTemplate, &QPushButton::clicked, this, [this, refreshBibleDefaultLabel, refreshSelectedTemplateLabel] {
     auto *item = templates_->currentItem();
-    if (!item) {
-      QMessageBox::information(this, "Plantillas", "Haz un clic sobre la plantilla que quieres eliminar u ocultar.");
-      return;
-    }
-
+    if (!item) return;
     const QString id = item->data(Qt::UserRole).toString();
     const bool builtin = id.startsWith("builtin:");
-    const QString action = builtin ? "ocultar" : "eliminar definitivamente";
-    if (QMessageBox::question(this, "Biblioteca de plantillas",
-                              "¿Quieres " + action + " ‘" + item->text() + "’?") != QMessageBox::Yes)
+    const QString verb = builtin ? "ocultar" : "eliminar";
+    if (QMessageBox::question(this, "Plantillas", "¿Quieres " + verb + " ‘" + TemplateLibrary::displayNameForId(id) + "’?") != QMessageBox::Yes)
       return;
-
     QString error;
     if (!TemplateLibrary::removeOrHide(id, &error)) {
       QMessageBox::warning(this, "Plantillas", error);
       return;
     }
-
     refreshTemplateLibrary();
-    refreshActiveTemplateLabel();
+    refreshBibleDefaultLabel();
     refreshSelectedTemplateLabel();
   });
 
-  connect(restoreBuiltins, &QPushButton::clicked, this, [this, refreshActiveTemplateLabel, refreshSelectedTemplateLabel] {
+  connect(restoreBuiltins, &QPushButton::clicked, this, [this, refreshBibleDefaultLabel, refreshSelectedTemplateLabel] {
     TemplateLibrary::restoreBuiltins();
     refreshTemplateLibrary();
-    refreshActiveTemplateLabel();
+    refreshBibleDefaultLabel();
     refreshSelectedTemplateLabel();
   });
 
-  refreshActiveTemplateLabel();
+  refreshBibleDefaultLabel();
   refreshSelectedTemplateLabel();
+
+  connect(canvas_, &DesignCanvasWidget::layerSelected, this, [this](int row) {
+    if (row >= 0) layers_->setCurrentRow(row);
+    else layers_->clearSelection();
+  });
+  connect(canvas_, &DesignCanvasWidget::layerGeometryPreviewChanged, this, [this](int row) {
+    currentRow_ = row;
+    selectLayer(row);
+    timeline_->refreshCurrentFrame();
+  });
+  connect(canvas_, &DesignCanvasWidget::layerGeometryCommitted, this, [this](int row) {
+    currentRow_ = row;
+    selectLayer(row);
+    timeline_->refreshCurrentFrame();
+  });
+
+  connect(canvas_, &DesignCanvasWidget::viewScaleChanged, this, [this](qreal) { refreshCanvas(); });
+
   connect(bibleTemplate_, &QCheckBox::toggled, this, &DesignPage::markBibleTemplate);
   connect(verseField, &QPushButton::clicked, this, &DesignPage::markAsVerseField);
   connect(referenceField, &QPushButton::clicked, this, &DesignPage::markAsReferenceField);
@@ -467,30 +479,41 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
 
 void DesignPage::refreshTemplateLibrary()
 {
+  const QString bibleDefault = TemplateLibrary::preferredBibleTemplate();
   templates_->clear();
+
   struct Builtin { QString id; QString name; Project p; };
   const QList<Builtin> builtins = {
     {"builtin:pastor", "Pastor Clean", TemplateFactory::pastorLowerThird()},
     {"builtin:motion", "Motion Pieces", TemplateFactory::motionPiecesLowerThird()},
     {"builtin:scripture", "Versículo", TemplateFactory::scriptureLowerThird()},
-    {"builtin:sermon", "Tema de prédica", TemplateFactory::sermonTitleLowerThird()},
+    {"builtin:sermon", "Tema", TemplateFactory::sermonTitleLowerThird()},
     {"builtin:worship", "Alabanza", TemplateFactory::worshipLowerThird()},
     {"builtin:announcement", "Anuncio", TemplateFactory::announcementLowerThird()}
   };
+
   for (const auto &b : builtins) {
     if (TemplateLibrary::isBuiltinHidden(b.id)) continue;
-    auto *item = new QListWidgetItem(projectIcon(b.p), b.name + "\nINTEGRADA");
+    QString label = b.name;
+    if (b.id == bibleDefault) label.prepend("★ ");
+    auto *item = new QListWidgetItem(projectIcon(b.p), label);
     item->setData(Qt::UserRole, b.id);
-    item->setToolTip("Plantilla integrada · clic para seleccionar");
-    item->setSizeHint({190, 118});
+    item->setToolTip("Integrada · clic para seleccionar · doble clic para abrir");
+    item->setSizeHint({152, 94});
     templates_->addItem(item);
   }
+
   for (const auto &entry : TemplateLibrary::entries()) {
-    QIcon icon; if (!entry.thumbnailPath.isEmpty()) icon = QIcon(entry.thumbnailPath);
-    auto *item = new QListWidgetItem(icon, entry.name + "\nMÍA");
+    QIcon icon;
+    if (!entry.thumbnailPath.isEmpty()) icon = QIcon(entry.thumbnailPath);
+    QString label = entry.name;
+    if (entry.filePath == bibleDefault) label.prepend("★ ");
+    auto *item = new QListWidgetItem(icon, label);
     item->setData(Qt::UserRole, entry.filePath);
-    item->setToolTip("Plantilla personal · clic para seleccionar");
-    item->setSizeHint({190, 118});
+    item->setToolTip(entry.usage == TemplateUsage::BibleText
+                         ? "Mía · plantilla bíblica · clic para seleccionar"
+                         : "Mía · clic para seleccionar");
+    item->setSizeHint({152, 94});
     templates_->addItem(item);
   }
 }
@@ -552,7 +575,9 @@ void DesignPage::setCurrentRowSafe(int row)
 
 void DesignPage::selectLayer(int row)
 {
-  currentRow_ = row; timeline_->setSelectedLayer(row);
+  currentRow_ = row;
+  timeline_->setSelectedLayer(row);
+  canvas_->setSelectedLayer(row);
   const auto &project = AppState::instance().project();
   if (row < 0 || row >= project.layers.size()) return;
   const auto &l = project.layers[row];
@@ -712,9 +737,21 @@ void DesignPage::alignLayerBottom()
 
 void DesignPage::refreshCanvas()
 {
-  const QImage frame = AppState::instance().previewFrame();
-  const QSize target = canvas_->size().boundedTo(QSize(1600, 900));
-  canvas_->setPixmap(QPixmap::fromImage(frame).scaled(target, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+  canvas_->update();
+  const QSize size = AppState::instance().project().canvas;
+  if (size.width() <= 0 || size.height() <= 0) {
+    canvasInfo_->clear();
+    return;
+  }
+
+  const qreal ratio = qreal(size.width()) / qreal(size.height());
+  const QString aspect = qAbs(ratio - (16.0 / 9.0)) < 0.01 ? QString("16:9") : QString::number(ratio, 'f', 2);
+  canvasInfo_->setText(QString("%1×%2 · %3 · vista %4%")
+                           .arg(size.width())
+                           .arg(size.height())
+                           .arg(aspect)
+                           .arg(qRound(canvas_->viewScale() * 100.0)));
 }
+
 
 } // namespace wg
