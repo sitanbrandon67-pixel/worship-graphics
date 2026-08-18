@@ -1,14 +1,5 @@
 #include "psd-importer.hpp"
-
-#if defined(_MSC_VER) && defined(__cplusplus)
-#define WG_OPENPSD_BOOL_SHIM 1
-#define _Bool bool
-#endif
-#include <openpsd/psd.h>
-#if defined(WG_OPENPSD_BOOL_SHIM)
-#undef _Bool
-#undef WG_OPENPSD_BOOL_SHIM
-#endif
+#include "psd-bridge.h"
 
 #include <QByteArray>
 #include <QDir>
@@ -39,24 +30,24 @@ QString safeFileName(QString value)
   return value.left(80);
 }
 
-QString layerName(const psd_document_t *doc, int32_t index)
+QString layerName(wg_psd_doc *doc, int32_t index)
 {
-  const uint8_t *raw = nullptr;
-  size_t length = 0;
-  if (psd_document_get_layer_name(doc, index, &raw, &length) != PSD_OK ||
-      !raw || length == 0)
+  QByteArray buffer(4096, '\0');
+  if (wg_psd_layer_name(doc, index, buffer.data(),
+                        static_cast<size_t>(buffer.size())) != 0 ||
+      buffer.constData()[0] == '\0') {
     return QString("Capa %1").arg(index + 1);
+  }
 
-  return QString::fromUtf8(reinterpret_cast<const char *>(raw),
-                           static_cast<int>(length));
+  return QString::fromUtf8(buffer.constData());
 }
 
-TextHorizontalAlign horizontalAlignment(psd_text_justification_t value)
+TextHorizontalAlign horizontalAlignment(int value)
 {
   switch (value) {
-  case PSD_TEXT_JUSTIFY_RIGHT:
+  case 1:
     return TextHorizontalAlign::Right;
-  case PSD_TEXT_JUSTIFY_CENTER:
+  case 2:
     return TextHorizontalAlign::Center;
   default:
     return TextHorizontalAlign::Left;
@@ -78,7 +69,41 @@ QString importedAssetDirectory(const QString &sourceFile)
   return result;
 }
 
-bool saveRasterLayer(psd_document_t *doc,
+Layer commonLayer(wg_psd_doc *doc,
+                  int32_t index,
+                  const QString &name,
+                  const QString &parentId)
+{
+  int32_t top = 0;
+  int32_t left = 0;
+  int32_t bottom = 0;
+  int32_t right = 0;
+  uint8_t opacity = 255;
+  uint8_t flags = 0;
+
+  wg_psd_layer_bounds(doc, index, &top, &left, &bottom, &right);
+  wg_psd_layer_properties(doc, index, &opacity, &flags);
+
+  Layer layer;
+  layer.id = makeId();
+  layer.name = name;
+  layer.parentId = parentId;
+  layer.position = QPointF(left, top);
+  layer.size = QSizeF(std::max(1, right - left),
+                      std::max(1, bottom - top));
+  layer.opacity = opacity / 255.0;
+  layer.visible = (flags & 0x02u) == 0;
+  layer.locked = false;
+  layer.enterAnimation = AnimationPreset::None;
+  layer.exitAnimation = AnimationPreset::None;
+  layer.enterDelayMs = 0;
+  layer.exitDelayMs = 0;
+  layer.enterDurationMs = 300;
+  layer.exitDurationMs = 300;
+  return layer;
+}
+
+bool saveRasterLayer(wg_psd_doc *doc,
                      int32_t index,
                      const QString &assetDir,
                      const QString &name,
@@ -91,17 +116,21 @@ bool saveRasterLayer(psd_document_t *doc,
     return false;
 
   size_t required = 0;
-  psd_status_t st =
-      psd_document_render_layer_rgba8(doc, index, nullptr, 0, &required);
+  const int queryStatus =
+      wg_psd_render_layer_required(doc, index, &required);
 
-  if (st != PSD_OK && st != PSD_ERR_BUFFER_TOO_SMALL) {
+  /* OpenPSD returns BUFFER_TOO_SMALL for a size query.  Any positive/zero
+     result with a valid required size is usable. */
+  if (required == 0) {
     if (error)
-      *error = QString::fromUtf8(psd_error_string(st));
+      *error = QString::fromUtf8(wg_psd_status_text(queryStatus));
     return false;
   }
 
   const size_t expected =
-      static_cast<size_t>(width) * static_cast<size_t>(height) * 4u;
+      static_cast<size_t>(width) *
+      static_cast<size_t>(height) * 4u;
+
   if (required < expected) {
     if (error)
       *error = "La capa no devolvió suficientes píxeles RGBA.";
@@ -111,16 +140,16 @@ bool saveRasterLayer(psd_document_t *doc,
   QByteArray rgba;
   rgba.resize(static_cast<qsizetype>(required));
 
-  st = psd_document_render_layer_rgba8(
-      doc,
-      index,
-      reinterpret_cast<uint8_t *>(rgba.data()),
-      required,
-      nullptr);
+  const int renderStatus =
+      wg_psd_render_layer(
+          doc,
+          index,
+          reinterpret_cast<uint8_t *>(rgba.data()),
+          required);
 
-  if (st != PSD_OK) {
+  if (renderStatus != 0) {
     if (error)
-      *error = QString::fromUtf8(psd_error_string(st));
+      *error = QString::fromUtf8(wg_psd_status_text(renderStatus));
     return false;
   }
 
@@ -131,9 +160,10 @@ bool saveRasterLayer(psd_document_t *doc,
               QImage::Format_RGBA8888);
 
   const QString path =
-      assetDir + "/" + QString("%1_%2.png")
-                       .arg(index, 4, 10, QLatin1Char('0'))
-                       .arg(safeFileName(name));
+      assetDir + "/" +
+      QString("%1_%2.png")
+          .arg(index, 4, 10, QLatin1Char('0'))
+          .arg(safeFileName(name));
 
   if (!view.copy().save(path, "PNG")) {
     if (error)
@@ -146,44 +176,7 @@ bool saveRasterLayer(psd_document_t *doc,
   return true;
 }
 
-Layer commonLayer(const psd_document_t *doc,
-                  int32_t index,
-                  const QString &name,
-                  const QString &parentId)
-{
-  int32_t top = 0;
-  int32_t left = 0;
-  int32_t bottom = 0;
-  int32_t right = 0;
-  uint8_t opacity = 255;
-  uint8_t flags = 0;
-
-  psd_document_get_layer_bounds(
-      doc, index, &top, &left, &bottom, &right);
-  psd_document_get_layer_properties(doc, index, &opacity, &flags);
-
-  Layer layer;
-  layer.id = makeId();
-  layer.name = name;
-  layer.parentId = parentId;
-  layer.position = QPointF(left, top);
-  layer.size = QSizeF(std::max(1, right - left),
-                      std::max(1, bottom - top));
-  layer.opacity = opacity / 255.0;
-
-  // PSD layer flag bit 1 means "hidden".
-  layer.visible = (flags & 0x02u) == 0;
-  layer.locked = false;
-  layer.enterAnimation = AnimationPreset::None;
-  layer.exitAnimation = AnimationPreset::None;
-  layer.enterDelayMs = 0;
-  layer.exitDelayMs = 0;
-  layer.enterDurationMs = 300;
-  layer.exitDurationMs = 300;
-  return layer;
-}
-
-bool importTextLayer(psd_document_t *doc,
+bool importTextLayer(wg_psd_doc *doc,
                      int32_t index,
                      const QString &name,
                      const QString &parentId,
@@ -197,19 +190,17 @@ bool importTextLayer(psd_document_t *doc,
   layer.type = LayerType::Text;
 
   QByteArray textBuffer(65536, '\0');
-  const psd_status_t textStatus =
-      psd_text_layer_get_text(doc,
-                              index,
-                              textBuffer.data(),
-                              static_cast<size_t>(textBuffer.size()));
+  const int textStatus =
+      wg_psd_text(doc, index, textBuffer.data(),
+                  static_cast<size_t>(textBuffer.size()));
 
-  if (textStatus == PSD_OK)
+  if (textStatus == 0)
     layer.text = QString::fromUtf8(textBuffer.constData());
   else
     layer.text = name;
 
-  psd_text_style_t style{};
-  if (psd_text_layer_get_default_style(doc, index, &style) == PSD_OK) {
+  wg_psd_text_style style{};
+  if (wg_psd_text_style_at(doc, index, &style) == 0) {
     if (style.font_name[0] != '\0')
       layer.fontFamily = QString::fromUtf8(style.font_name);
 
@@ -219,26 +210,24 @@ bool importTextLayer(psd_document_t *doc,
       layer.minFontSize = std::max(6, layer.fontSize / 2);
     }
 
-    layer.color =
-        QColor(style.color_rgba[0],
-               style.color_rgba[1],
-               style.color_rgba[2],
-               style.color_rgba[3]);
+    layer.color = QColor(style.color_rgba[0],
+                         style.color_rgba[1],
+                         style.color_rgba[2],
+                         style.color_rgba[3]);
 
     layer.textHorizontalAlign =
         horizontalAlignment(style.justification);
   }
 
-  psd_text_matrix_t matrix{};
-  psd_text_bounds_t bounds{};
-  if (psd_text_layer_get_matrix_bounds(
-          doc, index, &matrix, &bounds) == PSD_OK) {
-    const double w = bounds.right - bounds.left;
-    const double h = bounds.bottom - bounds.top;
+  wg_psd_text_geometry geometry{};
+  if (wg_psd_text_geometry_at(doc, index, &geometry) == 0) {
+    const double w = geometry.right - geometry.left;
+    const double h = geometry.bottom - geometry.top;
 
     if (w > 1.0 && h > 1.0) {
-      layer.position = QPointF(matrix.tx + bounds.left,
-                               matrix.ty + bounds.top);
+      layer.position =
+          QPointF(geometry.tx + geometry.left,
+                  geometry.ty + geometry.top);
       layer.size = QSizeF(w, h);
     }
   }
@@ -249,15 +238,17 @@ bool importTextLayer(psd_document_t *doc,
   layer.splitOverflow = false;
 
   const int explicitLines =
-      std::max(1, static_cast<int>(layer.text.count('\n')) + 1);
-  layer.maxLines = std::clamp(explicitLines + 3, 1, 12);
+      std::max(1,
+               static_cast<int>(layer.text.count('\n')) + 1);
+  layer.maxLines =
+      std::clamp(explicitLines + 3, 1, 12);
 
   *out = layer;
 
-  if (textStatus != PSD_OK && warning) {
+  if (textStatus != 0 && warning) {
     *warning =
-        QString("Texto «%1»: se importó la capa, pero OpenPSD no pudo "
-                "leer todo el contenido editable.")
+        QString("Texto «%1»: la capa se importó, pero el contenido "
+                "editable completo no estuvo disponible.")
             .arg(name);
   }
 
@@ -282,36 +273,26 @@ PsdImportResult PsdImporter::importFile(const QString &filePath)
     return result;
   }
 
-  psd_stream_t *stream =
-      psd_stream_create_buffer(
-          nullptr,
-          reinterpret_cast<const uint8_t *>(bytes.constData()),
-          static_cast<size_t>(bytes.size()));
-
-  if (!stream) {
-    result.error = "No se pudo crear el lector PSD.";
-    return result;
-  }
-
-  psd_status_t parseStatus = PSD_OK;
-  psd_document_t *doc =
-      psd_parse_ex(stream, nullptr, &parseStatus);
-  psd_stream_destroy(stream);
+  char openError[512] = {};
+  wg_psd_doc *doc =
+      wg_psd_open_memory(bytes.constData(),
+                         static_cast<size_t>(bytes.size()),
+                         openError,
+                         sizeof(openError));
 
   if (!doc) {
     result.error =
         QString("OpenPSD no pudo analizar el archivo: %1")
-            .arg(QString::fromUtf8(psd_error_string(parseStatus)));
+            .arg(QString::fromUtf8(openError));
     return result;
   }
 
   uint32_t documentWidth = 0;
   uint32_t documentHeight = 0;
-  psd_document_get_dimensions(
-      doc, &documentWidth, &documentHeight);
-
-  if (documentWidth == 0 || documentHeight == 0) {
-    psd_document_free(doc);
+  if (wg_psd_dimensions(doc, &documentWidth,
+                        &documentHeight) != 0 ||
+      documentWidth == 0 || documentHeight == 0) {
+    wg_psd_close(doc);
     result.error = "El PSD no tiene dimensiones válidas.";
     return result;
   }
@@ -323,24 +304,29 @@ PsdImportResult PsdImporter::importFile(const QString &filePath)
             static_cast<int>(documentHeight));
   project.layers.clear();
 
-  const QString assetDir = importedAssetDirectory(filePath);
+  const QString assetDir =
+      importedAssetDirectory(filePath);
 
   int32_t layerCount = 0;
-  psd_document_get_layer_count(doc, &layerCount);
+  if (wg_psd_layer_count(doc, &layerCount) != 0) {
+    wg_psd_close(doc);
+    result.error = "No se pudo leer la lista de capas del PSD.";
+    return result;
+  }
 
   QVector<QString> groupStack;
   QVector<Layer> topToBottom;
   bool hasVerseField = false;
   bool hasReferenceField = false;
 
-  // OpenPSD/PSD stores layers bottom -> top.
-  // Walking backwards matches Photoshop's visual top -> bottom hierarchy.
-  for (int32_t index = layerCount - 1; index >= 0; --index) {
-    psd_layer_type_t type = PSD_LAYER_TYPE_EMPTY;
-    if (psd_document_get_layer_type(doc, index, &type) != PSD_OK)
+  for (int32_t index = layerCount - 1;
+       index >= 0;
+       --index) {
+    int type = WG_PSD_EMPTY;
+    if (wg_psd_layer_type_at(doc, index, &type) != 0)
       continue;
 
-    if (type == PSD_LAYER_TYPE_GROUP_END) {
+    if (type == WG_PSD_GROUP_END) {
       if (!groupStack.isEmpty())
         groupStack.removeLast();
       continue;
@@ -348,10 +334,13 @@ PsdImportResult PsdImporter::importFile(const QString &filePath)
 
     const QString name = layerName(doc, index);
     const QString parentId =
-        groupStack.isEmpty() ? QString() : groupStack.constLast();
+        groupStack.isEmpty()
+            ? QString()
+            : groupStack.constLast();
 
-    if (type == PSD_LAYER_TYPE_GROUP_START) {
-      Layer group = commonLayer(doc, index, name, parentId);
+    if (type == WG_PSD_GROUP_START) {
+      Layer group =
+          commonLayer(doc, index, name, parentId);
       group.type = LayerType::Group;
       topToBottom.push_back(group);
       groupStack.push_back(group.id);
@@ -359,10 +348,11 @@ PsdImportResult PsdImporter::importFile(const QString &filePath)
       continue;
     }
 
-    if (type == PSD_LAYER_TYPE_TEXT) {
+    if (type == WG_PSD_TEXT) {
       Layer text;
       QString warning;
-      if (importTextLayer(doc, index, name, parentId, &text, &warning)) {
+      if (importTextLayer(doc, index, name,
+                          parentId, &text, &warning)) {
         topToBottom.push_back(text);
         ++result.textLayers;
         if (!warning.isEmpty())
@@ -382,7 +372,7 @@ PsdImportResult PsdImporter::importFile(const QString &filePath)
     int32_t left = 0;
     int32_t bottom = 0;
     int32_t right = 0;
-    psd_document_get_layer_bounds(
+    wg_psd_layer_bounds(
         doc, index, &top, &left, &bottom, &right);
 
     const int width = right - left;
@@ -398,16 +388,17 @@ PsdImportResult PsdImporter::importFile(const QString &filePath)
                         height,
                         &pngPath,
                         &rasterError)) {
-      Layer image = commonLayer(doc, index, name, parentId);
+      Layer image =
+          commonLayer(doc, index, name, parentId);
       image.type = LayerType::Image;
       image.imagePath = pngPath;
       topToBottom.push_back(image);
       ++result.imageLayers;
 
-      if (type != PSD_LAYER_TYPE_PIXEL) {
+      if (type != WG_PSD_PIXEL) {
         result.warnings
-            << QString("«%1» se convirtió a imagen para conservar "
-                       "la apariencia disponible.")
+            << QString("«%1» se convirtió a imagen para "
+                       "conservar la apariencia disponible.")
                    .arg(name);
       }
     } else {
@@ -421,15 +412,14 @@ PsdImportResult PsdImporter::importFile(const QString &filePath)
     }
   }
 
-  // Worship Graphics renders the vector from back to front.
-  // We parsed top -> bottom for group hierarchy, so invert for correct stacking.
-  std::reverse(topToBottom.begin(), topToBottom.end());
+  std::reverse(topToBottom.begin(),
+               topToBottom.end());
   project.layers = std::move(topToBottom);
 
   if (hasVerseField && hasReferenceField)
     project.usage = TemplateUsage::BibleText;
 
-  psd_document_free(doc);
+  wg_psd_close(doc);
 
   if (project.layers.isEmpty()) {
     result.error =
@@ -439,8 +429,8 @@ PsdImportResult PsdImporter::importFile(const QString &filePath)
 
   if (result.skippedLayers > 0) {
     result.warnings
-        << QString("%1 capa(s) avanzada(s) no pudieron importarse "
-                   "de forma editable.")
+        << QString("%1 capa(s) avanzada(s) no pudieron "
+                   "importarse de forma editable.")
                .arg(result.skippedLayers);
   }
 

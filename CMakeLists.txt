@@ -32,10 +32,9 @@ endif()
 
 
 # -----------------------------------------------------------------------------
-# Native PSD/PSB parsing for Worship Graphics.
-# OpenPSD is pinned to an exact commit and built statically into the plugin.
-# We deliberately avoid OpenPSD's own top-level CMakeLists so its GTK demo/tests
-# are not pulled into the OBS plugin build.
+# Native PSD/PSB parsing.
+# OpenPSD remains pure C. Worship Graphics talks to it through psd-bridge.c,
+# so no OpenPSD C headers are parsed by the C++ compiler.
 # -----------------------------------------------------------------------------
 FetchContent_Declare(
   wg_openpsd_source
@@ -61,18 +60,19 @@ add_library(wg_openpsd STATIC
   ${wg_openpsd_source_SOURCE_DIR}/src/psd_text_layer.c
   ${wg_openpsd_source_SOURCE_DIR}/src/psd_text_layer_parse.c
 )
+
 set_target_properties(wg_openpsd PROPERTIES
   C_STANDARD 17
   C_STANDARD_REQUIRED ON
   C_EXTENSIONS OFF
   POSITION_INDEPENDENT_CODE ON
 )
-if(MSVC)
-  target_compile_options(wg_openpsd PRIVATE /TC)
-endif()
 target_include_directories(wg_openpsd PUBLIC
   ${wg_openpsd_source_SOURCE_DIR}/include
 )
+if(MSVC)
+  target_compile_options(wg_openpsd PRIVATE /TC)
+endif()
 
 find_package(ZLIB QUIET)
 if(ZLIB_FOUND)
@@ -80,7 +80,31 @@ if(ZLIB_FOUND)
   target_link_libraries(wg_openpsd PRIVATE ZLIB::ZLIB)
 endif()
 
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE wg_openpsd)
+add_library(wg_psd_bridge STATIC
+  src/psd-bridge.c
+  src/psd-bridge.h
+)
+set_target_properties(wg_psd_bridge PROPERTIES
+  C_STANDARD 17
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF
+  POSITION_INDEPENDENT_CODE ON
+)
+target_include_directories(wg_psd_bridge PRIVATE
+  ${wg_openpsd_source_SOURCE_DIR}/include
+)
+target_include_directories(wg_psd_bridge PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(wg_psd_bridge PRIVATE wg_openpsd)
+if(MSVC)
+  target_compile_options(wg_psd_bridge PRIVATE /TC)
+endif()
+
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
+  wg_psd_bridge
+  wg_openpsd
+)
 
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
   src/plugin-main.cpp
