@@ -65,7 +65,7 @@ struct Layer {
   bool textWrap = true;
   bool splitOverflow = true;
   int maxLines = 2;
-  TextHorizontalAlign textHorizontalAlign = TextHorizontalAlign::Center;
+  TextHorizontalAlign textHorizontalAlign = TextHorizontalAlign::Left;
   TextVerticalAlign textVerticalAlign = TextVerticalAlign::Middle;
   QString imagePath;
 
@@ -73,7 +73,8 @@ struct Layer {
   AnimationPreset exitAnimation = AnimationPreset::SlideRight;
   int enterDelayMs = 0;
   int exitDelayMs = 0;
-  int animationDurationMs = 450;
+  int enterDurationMs = 450;
+  int exitDurationMs = 450;
 };
 
 struct Project {

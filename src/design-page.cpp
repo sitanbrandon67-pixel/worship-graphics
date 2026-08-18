@@ -4,6 +4,7 @@
 #include "template-factory.hpp"
 #include "template-library.hpp"
 #include "theme.hpp"
+#include "timeline-widget.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -23,6 +24,7 @@
 #include <QSpinBox>
 #include <QVBoxLayout>
 #include <QUuid>
+#include <algorithm>
 
 namespace wg {
 
@@ -37,17 +39,11 @@ static QIcon projectIcon(const Project &project)
   return QIcon(QPixmap::fromImage(img));
 }
 
-static Layer *currentLayer(Project &project, int row)
-{
-  if (row < 0 || row >= project.layers.size()) return nullptr;
-  return &project.layers[row];
-}
-
 DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
 {
   auto *root = new QVBoxLayout(this);
-  root->setContentsMargins(16, 14, 16, 14);
-  root->setSpacing(10);
+  root->setContentsMargins(20, 18, 20, 18);
+  root->setSpacing(12);
 
   auto *libraryCard = new QFrame();
   libraryCard->setObjectName("wgCard");
@@ -82,415 +78,383 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   root->addLayout(toolbar);
 
   auto *body = new QHBoxLayout();
-  body->setSpacing(10);
+  body->setSpacing(12);
 
-  auto *layersCard = new QFrame(); layersCard->setObjectName("wgCard"); layersCard->setFixedWidth(280); applySoftShadow(layersCard);
+  auto *layersCard = new QFrame(); layersCard->setObjectName("wgCard"); layersCard->setFixedWidth(285); applySoftShadow(layersCard);
   auto *layersLayout = new QVBoxLayout(layersCard);
-  auto *layersTitle = new QLabel("CAPAS"); layersTitle->setObjectName("wgSectionTitle");
-  layersLayout->addWidget(layersTitle);
+  auto *layersTitle = new QLabel("CAPAS"); layersTitle->setObjectName("wgSectionTitle"); layersLayout->addWidget(layersTitle);
   layers_ = new QListWidget();
-  layersLayout->addWidget(layers_);
-  auto *layerButtons = new QHBoxLayout();
-  auto *up = new QPushButton("↑"); auto *down = new QPushButton("↓");
-  auto *show = new QPushButton("VER"); auto *lock = new QPushButton("BLOQ");
-  layerButtons->addWidget(up); layerButtons->addWidget(down); layerButtons->addWidget(show); layerButtons->addWidget(lock);
-  layersLayout->addLayout(layerButtons);
+  layers_->setSelectionMode(QAbstractItemView::ExtendedSelection);
+  layersLayout->addWidget(layers_, 1);
+  auto *layerActions1 = new QHBoxLayout();
+  auto *up = new QPushButton("↑"); auto *down = new QPushButton("↓"); auto *visible = new QPushButton("VISIBILIDAD"); auto *lock = new QPushButton("BLOQUEAR");
+  layerActions1->addWidget(up); layerActions1->addWidget(down); layerActions1->addWidget(visible); layerActions1->addWidget(lock);
+  layersLayout->addLayout(layerActions1);
+  auto *layerActions2 = new QHBoxLayout();
+  auto *group = new QPushButton("AGRUPAR"); auto *ungroup = new QPushButton("DESAGRUPAR");
+  layerActions2->addWidget(group); layerActions2->addWidget(ungroup); layersLayout->addLayout(layerActions2);
   body->addWidget(layersCard);
 
-  auto *center = new QVBoxLayout();
   auto *canvasCard = new QFrame(); canvasCard->setObjectName("wgCard"); applySoftShadow(canvasCard);
   auto *canvasLayout = new QVBoxLayout(canvasCard);
-  auto *canvasTitle = new QLabel("CANVAS"); canvasTitle->setObjectName("wgSectionTitle");
-  canvasLayout->addWidget(canvasTitle);
-  canvas_ = new QLabel(); canvas_->setObjectName("wgScreen"); canvas_->setAlignment(Qt::AlignCenter); canvas_->setMinimumHeight(360);
-  canvasLayout->addWidget(canvas_);
-  center->addWidget(canvasCard, 1);
-  body->addLayout(center, 1);
+  auto *canvasHeader = new QHBoxLayout();
+  auto *canvasTitle = new QLabel("CANVAS · PREVISUALIZACIÓN DE TIEMPO"); canvasTitle->setObjectName("wgSectionTitle");
+  auto *canvasInfo = new QLabel("1920×1080 · ARRASTRA EL PLAYHEAD"); canvasInfo->setObjectName("wgSubtle");
+  canvasHeader->addWidget(canvasTitle); canvasHeader->addStretch(); canvasHeader->addWidget(canvasInfo); canvasLayout->addLayout(canvasHeader);
+  canvas_ = new QLabel(); canvas_->setObjectName("wgScreen"); canvas_->setAlignment(Qt::AlignCenter); canvas_->setMinimumSize(500, 281);
+  canvasLayout->addWidget(canvas_, 1);
+  body->addWidget(canvasCard, 1);
 
-  auto *propsCard = new QFrame(); propsCard->setObjectName("wgCard"); propsCard->setFixedWidth(340); applySoftShadow(propsCard);
-  auto *propsLayout = new QVBoxLayout(propsCard);
-  auto *propsTitle = new QLabel("PROPIEDADES"); propsTitle->setObjectName("wgSectionTitle");
-  propsLayout->addWidget(propsTitle);
+  auto *propertiesCard = new QFrame(); propertiesCard->setObjectName("wgCard"); propertiesCard->setFixedWidth(350); applySoftShadow(propertiesCard);
+  auto *propertiesLayout = new QVBoxLayout(propertiesCard);
+  auto *propTitle = new QLabel("PROPIEDADES"); propTitle->setObjectName("wgSectionTitle"); propertiesLayout->addWidget(propTitle);
 
-  bibleTemplate_ = new QCheckBox("Plantilla bíblica");
-  propsLayout->addWidget(bibleTemplate_);
+  bibleTemplate_ = new QCheckBox("PLANTILLA BÍBLICA");
+  bibleTemplate_->setToolTip("Destina esta plantilla a {{VERSICULO}} y {{REFERENCIA}}");
+  propertiesLayout->addWidget(bibleTemplate_);
 
   auto *form = new QFormLayout();
-  name_ = new QLineEdit(); text_ = new QLineEdit(); color_ = new QLineEdit("#FFFFFFFF");
-  x_ = new QSpinBox(); y_ = new QSpinBox(); w_ = new QSpinBox(); h_ = new QSpinBox();
-  fontSize_ = new QSpinBox(); minFontSize_ = new QSpinBox(); maxLines_ = new QSpinBox();
+  name_ = new QLineEdit(); text_ = new QLineEdit(); color_ = new QLineEdit();
+  x_ = new QSpinBox(); y_ = new QSpinBox(); w_ = new QSpinBox(); h_ = new QSpinBox(); fontSize_ = new QSpinBox();
+  minFontSize_ = new QSpinBox(); maxLines_ = new QSpinBox();
   opacity_ = new QSpinBox(); radius_ = new QSpinBox(); rotation_ = new QDoubleSpinBox();
-  enterDelay_ = new QSpinBox(); exitDelay_ = new QSpinBox(); duration_ = new QSpinBox();
-  enterAnimation_ = new QComboBox(); exitAnimation_ = new QComboBox();
-  textAlignH_ = new QComboBox(); textAlignV_ = new QComboBox();
-  autoFit_ = new QCheckBox("Auto ajustar al marco"); wrap_ = new QCheckBox("Respetar marco / saltos"); splitOverflow_ = new QCheckBox("Dividir en dos líneas si excede");
+  enterDelay_ = new QSpinBox(); exitDelay_ = new QSpinBox(); enterDuration_ = new QSpinBox(); exitDuration_ = new QSpinBox();
+  for (auto *spin : {x_, y_, w_, h_}) spin->setRange(-8000, 8000);
+  fontSize_->setRange(8, 400); minFontSize_->setRange(6, 400); maxLines_->setRange(1, 8);
+  opacity_->setRange(0, 100); radius_->setRange(0, 300); rotation_->setRange(-360, 360); rotation_->setDecimals(1);
+  enterDelay_->setRange(0, 30000); exitDelay_->setRange(0, 30000); enterDuration_->setRange(80, 30000); exitDuration_->setRange(80, 30000);
+  enterAnimation_ = new QComboBox(); exitAnimation_ = new QComboBox(); enterAnimation_->addItems(animationNames()); exitAnimation_->addItems(animationNames());
+  textAlignH_ = new QComboBox(); textAlignH_->addItems({"Izquierda", "Centro", "Derecha"});
+  textAlignV_ = new QComboBox(); textAlignV_->addItems({"Arriba", "Centro", "Abajo"});
+  autoFit_ = new QCheckBox("Autoajustar fuente al marco");
+  wrap_ = new QCheckBox("Ajustar líneas dentro del marco");
+  splitOverflow_ = new QCheckBox("Dividir si llega al límite");
 
-  for (QSpinBox *box : {x_, y_, w_, h_, fontSize_, minFontSize_, maxLines_, opacity_, radius_, enterDelay_, exitDelay_, duration_}) {
-    box->setRange(0, 5000);
-  }
-  x_->setRange(-5000, 5000); y_->setRange(-5000, 5000);
-  opacity_->setRange(0, 100);
-  fontSize_->setRange(6, 400); minFontSize_->setRange(6, 400); maxLines_->setRange(1, 6);
-  radius_->setRange(0, 500);
-  rotation_->setRange(-360.0, 360.0);
-  enterAnimation_->addItems(animationNames());
-  exitAnimation_->addItems(animationNames());
-  textAlignH_->addItems({"Izquierda", "Centro", "Derecha"});
-  textAlignV_->addItems({"Arriba", "Centro", "Abajo"});
+  form->addRow("Nombre", name_); form->addRow("Texto", text_); form->addRow("Color", color_);
+  form->addRow("X", x_); form->addRow("Y", y_); form->addRow("Ancho", w_); form->addRow("Alto", h_);
+  form->addRow("Fuente base", fontSize_); form->addRow("Fuente mínima", minFontSize_); form->addRow("Máx. líneas", maxLines_);
+  form->addRow("Texto horizontal", textAlignH_); form->addRow("Texto vertical", textAlignV_);
+  form->addRow("Opacidad %", opacity_); form->addRow("Radio", radius_); form->addRow("Rotación", rotation_);
+  form->addRow("Entrada", enterAnimation_); form->addRow("Delay entrada", enterDelay_); form->addRow("Duración entrada", enterDuration_);
+  form->addRow("Salida", exitAnimation_); form->addRow("Delay salida", exitDelay_); form->addRow("Duración salida", exitDuration_);
+  propertiesLayout->addLayout(form);
+  propertiesLayout->addWidget(autoFit_); propertiesLayout->addWidget(wrap_); propertiesLayout->addWidget(splitOverflow_);
 
-  form->addRow("Nombre", name_);
-  form->addRow("Texto", text_);
-  form->addRow("Color", color_);
-  form->addRow("X", x_);
-  form->addRow("Y", y_);
-  form->addRow("Ancho", w_);
-  form->addRow("Alto", h_);
-  form->addRow("Fuente", fontSize_);
-  form->addRow("Mín. fuente", minFontSize_);
-  form->addRow("Máx. líneas", maxLines_);
-  form->addRow("Opacidad %", opacity_);
-  form->addRow("Esquina", radius_);
-  form->addRow("Rotación", rotation_);
-  form->addRow("Delay entrada", enterDelay_);
-  form->addRow("Delay salida", exitDelay_);
-  form->addRow("Duración", duration_);
-  form->addRow("Anim. entrada", enterAnimation_);
-  form->addRow("Anim. salida", exitAnimation_);
-  form->addRow("Alineación H", textAlignH_);
-  form->addRow("Alineación V", textAlignV_);
-  propsLayout->addLayout(form);
-  propsLayout->addWidget(autoFit_);
-  propsLayout->addWidget(wrap_);
-  propsLayout->addWidget(splitOverflow_);
+  auto *fieldTitle = new QLabel("CAMPOS BÍBLICOS"); fieldTitle->setObjectName("wgSectionTitle"); propertiesLayout->addWidget(fieldTitle);
+  auto *fieldRow = new QHBoxLayout();
+  auto *verseField = new QPushButton("{{VERSICULO}}");
+  auto *referenceField = new QPushButton("{{REFERENCIA}}");
+  fieldRow->addWidget(verseField); fieldRow->addWidget(referenceField); propertiesLayout->addLayout(fieldRow);
 
-  auto *fieldButtons = new QHBoxLayout();
-  auto *verseField = new QPushButton("CAMPO VERSÍCULO");
-  auto *refField = new QPushButton("CAMPO REFERENCIA");
-  fieldButtons->addWidget(verseField); fieldButtons->addWidget(refField);
-  propsLayout->addLayout(fieldButtons);
+  auto *alignTitle = new QLabel("ALINEAR CAPA EN CANVAS"); alignTitle->setObjectName("wgSectionTitle"); propertiesLayout->addWidget(alignTitle);
+  auto *alignRow1 = new QHBoxLayout();
+  auto *alignLeft = new QPushButton("IZQ"); auto *alignCenterH = new QPushButton("CENTRO H"); auto *alignRight = new QPushButton("DER");
+  alignRow1->addWidget(alignLeft); alignRow1->addWidget(alignCenterH); alignRow1->addWidget(alignRight); propertiesLayout->addLayout(alignRow1);
+  auto *alignRow2 = new QHBoxLayout();
+  auto *alignTop = new QPushButton("ARRIBA"); auto *alignCenterV = new QPushButton("CENTRO V"); auto *alignBottom = new QPushButton("ABAJO");
+  alignRow2->addWidget(alignTop); alignRow2->addWidget(alignCenterV); alignRow2->addWidget(alignBottom); propertiesLayout->addLayout(alignRow2);
 
-  auto *alignLabel = new QLabel("ALINEAR CAPA EN CANVAS"); alignLabel->setObjectName("wgSectionTitle");
-  propsLayout->addWidget(alignLabel);
-  auto *align1 = new QHBoxLayout();
-  auto *left = new QPushButton("Izq"); auto *centerH = new QPushButton("Centro H"); auto *right = new QPushButton("Der");
-  align1->addWidget(left); align1->addWidget(centerH); align1->addWidget(right);
-  propsLayout->addLayout(align1);
-  auto *align2 = new QHBoxLayout();
-  auto *top = new QPushButton("Arriba"); auto *centerV = new QPushButton("Centro V"); auto *bottom = new QPushButton("Abajo");
-  align2->addWidget(top); align2->addWidget(centerV); align2->addWidget(bottom);
-  propsLayout->addLayout(align2);
-
-  auto *apply = new QPushButton("APLICAR CAMBIOS"); apply->setObjectName("wgPrimary");
-  propsLayout->addWidget(apply);
-  propsLayout->addStretch(1);
-  body->addWidget(propsCard);
-
+  auto *apply = new QPushButton("APLICAR CAMBIOS"); apply->setObjectName("wgPrimary"); propertiesLayout->addWidget(apply); propertiesLayout->addStretch();
+  body->addWidget(propertiesCard);
   root->addLayout(body, 1);
 
+  auto *timelineCard = new QFrame(); timelineCard->setObjectName("wgCard"); applySoftShadow(timelineCard);
+  auto *timelineLayout = new QVBoxLayout(timelineCard); timelineLayout->setContentsMargins(10, 10, 10, 10); timelineLayout->setSpacing(8);
+  auto *timelineControls = new QHBoxLayout();
+  auto *phase = new QComboBox(); phase->addItems({"ENTRADA", "SALIDA"});
+  auto *play = new QPushButton("▶ REPRODUCIR"); play->setObjectName("wgPrimary");
+  auto *stop = new QPushButton("■ DETENER");
+  auto *speedLabel = new QLabel("Velocidad preview"); speedLabel->setObjectName("wgSubtle");
+  auto *speed = new QComboBox(); speed->addItem("0.25×", 0.25); speed->addItem("0.5×", 0.5); speed->addItem("1×", 1.0); speed->addItem("2×", 2.0); speed->setCurrentIndex(2);
+  auto *halfTime = new QPushButton("½ TIEMPO"); halfTime->setToolTip("Comprime todos los puntos de esta fase: animación 2× más rápida");
+  auto *doubleTime = new QPushButton("×2 TIEMPO"); doubleTime->setToolTip("Estira todos los puntos de esta fase: animación 2× más lenta");
+  auto *timeReadout = new QLabel("0.00 s"); timeReadout->setObjectName("wgSubtle");
+  timelineControls->addWidget(phase); timelineControls->addWidget(play); timelineControls->addWidget(stop); timelineControls->addSpacing(10);
+  timelineControls->addWidget(speedLabel); timelineControls->addWidget(speed); timelineControls->addSpacing(10);
+  timelineControls->addWidget(halfTime); timelineControls->addWidget(doubleTime); timelineControls->addStretch(); timelineControls->addWidget(timeReadout);
+  timelineLayout->addLayout(timelineControls);
+  timeline_ = new TimelineWidget(); timelineLayout->addWidget(timeline_);
+  root->addWidget(timelineCard);
+
+  auto &state = AppState::instance();
+  connect(&state, &AppState::previewChanged, this, &DesignPage::refreshCanvas);
+  connect(&state, &AppState::modelChanged, this, &DesignPage::rebuildLayerList);
+  connect(layers_, &QListWidget::currentRowChanged, this, &DesignPage::selectLayer);
+  connect(apply, &QPushButton::clicked, this, &DesignPage::applyProperties);
   connect(addText, &QPushButton::clicked, this, &DesignPage::addTextLayer);
   connect(addShape, &QPushButton::clicked, this, &DesignPage::addShapeLayer);
   connect(addImage, &QPushButton::clicked, this, &DesignPage::addImageLayer);
   connect(remove, &QPushButton::clicked, this, &DesignPage::deleteCurrentLayer);
   connect(duplicate, &QPushButton::clicked, this, &DesignPage::duplicateCurrentLayer);
-  connect(up, &QPushButton::clicked, this, [this]{ moveCurrentLayer(-1); });
-  connect(down, &QPushButton::clicked, this, [this]{ moveCurrentLayer(1); });
-  connect(show, &QPushButton::clicked, this, &DesignPage::toggleVisibility);
+  connect(up, &QPushButton::clicked, this, [this] { moveCurrentLayer(-1); });
+  connect(down, &QPushButton::clicked, this, [this] { moveCurrentLayer(1); });
+  connect(visible, &QPushButton::clicked, this, &DesignPage::toggleVisibility);
   connect(lock, &QPushButton::clicked, this, &DesignPage::toggleLock);
+  connect(group, &QPushButton::clicked, this, &DesignPage::groupSelection);
+  connect(ungroup, &QPushButton::clicked, this, &DesignPage::ungroupCurrent);
   connect(stagger, &QPushButton::clicked, this, &DesignPage::applyStagger);
   connect(importPsd, &QPushButton::clicked, this, &DesignPage::importPsdPlaceholder);
   connect(save, &QPushButton::clicked, this, &DesignPage::saveTemplate);
-  connect(templates_, &QListWidget::itemDoubleClicked, this, [this]{ loadSelectedTemplate(); });
-  connect(layers_, &QListWidget::currentRowChanged, this, &DesignPage::selectLayer);
-  connect(apply, &QPushButton::clicked, this, &DesignPage::applyProperties);
+  connect(templates_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *) { loadSelectedTemplate(); });
   connect(bibleTemplate_, &QCheckBox::toggled, this, &DesignPage::markBibleTemplate);
   connect(verseField, &QPushButton::clicked, this, &DesignPage::markAsVerseField);
-  connect(refField, &QPushButton::clicked, this, &DesignPage::markAsReferenceField);
-  connect(left, &QPushButton::clicked, this, &DesignPage::alignLayerLeft);
-  connect(centerH, &QPushButton::clicked, this, &DesignPage::alignLayerCenterH);
-  connect(right, &QPushButton::clicked, this, &DesignPage::alignLayerRight);
-  connect(top, &QPushButton::clicked, this, &DesignPage::alignLayerTop);
-  connect(centerV, &QPushButton::clicked, this, &DesignPage::alignLayerCenterV);
-  connect(bottom, &QPushButton::clicked, this, &DesignPage::alignLayerBottom);
+  connect(referenceField, &QPushButton::clicked, this, &DesignPage::markAsReferenceField);
+  connect(alignLeft, &QPushButton::clicked, this, &DesignPage::alignLayerLeft);
+  connect(alignCenterH, &QPushButton::clicked, this, &DesignPage::alignLayerCenterH);
+  connect(alignRight, &QPushButton::clicked, this, &DesignPage::alignLayerRight);
+  connect(alignTop, &QPushButton::clicked, this, &DesignPage::alignLayerTop);
+  connect(alignCenterV, &QPushButton::clicked, this, &DesignPage::alignLayerCenterV);
+  connect(alignBottom, &QPushButton::clicked, this, &DesignPage::alignLayerBottom);
 
-  refreshTemplateLibrary();
-  rebuildLayerList();
-  refreshCanvas();
-}
+  connect(phase, &QComboBox::currentIndexChanged, this, [this](int index) { timeline_->setPhase(index == 0); });
+  connect(play, &QPushButton::clicked, timeline_, &TimelineWidget::togglePlayback);
+  connect(stop, &QPushButton::clicked, this, [this] { timeline_->stopPlayback(); timeline_->setCurrentTimeMs(0); });
+  connect(speed, &QComboBox::currentIndexChanged, this, [this, speed](int index) { timeline_->setPlaybackSpeed(speed->itemData(index).toDouble()); });
+  connect(halfTime, &QPushButton::clicked, this, [this] { AppState::instance().scaleTimeline(0.5, timeline_->isEntering()); timeline_->refreshCurrentFrame(); selectLayer(currentRow_); });
+  connect(doubleTime, &QPushButton::clicked, this, [this] { AppState::instance().scaleTimeline(2.0, timeline_->isEntering()); timeline_->refreshCurrentFrame(); selectLayer(currentRow_); });
+  connect(timeline_, &TimelineWidget::currentTimeChanged, this, [timeReadout](int ms) { timeReadout->setText(QString::number(ms / 1000.0, 'f', 2) + " s"); });
+  connect(timeline_, &TimelineWidget::playbackStateChanged, this, [play](bool playing) { play->setText(playing ? "❚❚ PAUSA" : "▶ REPRODUCIR"); });
+  connect(timeline_, &TimelineWidget::layerSelected, this, [this](int row) { layers_->setCurrentRow(row); });
+  connect(timeline_, &TimelineWidget::timingEdited, this, [this](int row) { if (row == currentRow_) selectLayer(row); });
 
-void DesignPage::rebuildLayerList()
-{
-  layers_->clear();
-  const auto &project = AppState::instance().project();
-  for (int i = 0; i < project.layers.size(); ++i) {
-    const Layer &l = project.layers[i];
-    QString label = l.name;
-    if (l.type == LayerType::Text)
-      label += " · T";
-    if (l.type == LayerType::Shape)
-      label += " · F";
-    if (l.type == LayerType::Image)
-      label += " · IMG";
-    if (!l.visible)
-      label += " · oculta";
-    layers_->addItem(label);
-  }
-  setCurrentRowSafe(currentRow_ < 0 ? 0 : currentRow_);
+  refreshTemplateLibrary(); rebuildLayerList(); refreshCanvas();
+  timeline_->setCurrentTimeMs(0);
 }
 
 void DesignPage::refreshTemplateLibrary()
 {
   templates_->clear();
-  auto defaults = QVector<Project>{TemplateFactory::pastorLowerThird(), TemplateFactory::motionPiecesLowerThird(), TemplateFactory::scriptureLowerThird()};
-  for (const auto &project : defaults) {
-    auto *item = new QListWidgetItem(projectIcon(project), project.name);
-    item->setData(Qt::UserRole, QString());
-    templates_->addItem(item);
+  struct Builtin { QString id; QString name; Project p; };
+  const QList<Builtin> builtins = {
+    {"builtin:pastor", "Pastor Clean", TemplateFactory::pastorLowerThird()},
+    {"builtin:motion", "Motion Pieces", TemplateFactory::motionPiecesLowerThird()},
+    {"builtin:scripture", "Versículo", TemplateFactory::scriptureLowerThird()}
+  };
+  for (const auto &b : builtins) {
+    auto *item = new QListWidgetItem(projectIcon(b.p), b.name); item->setData(Qt::UserRole, b.id); item->setSizeHint({185, 112}); templates_->addItem(item);
   }
   for (const auto &entry : TemplateLibrary::entries()) {
-    auto *item = new QListWidgetItem(entry.thumbnailPath.isEmpty() ? QIcon() : QIcon(entry.thumbnailPath), entry.name);
-    item->setData(Qt::UserRole, entry.filePath);
-    templates_->addItem(item);
+    QIcon icon; if (!entry.thumbnailPath.isEmpty()) icon = QIcon(entry.thumbnailPath);
+    auto *item = new QListWidgetItem(icon, entry.name); item->setData(Qt::UserRole, entry.filePath); item->setSizeHint({185, 112}); templates_->addItem(item);
   }
-}
-
-void DesignPage::selectLayer(int row)
-{
-  currentRow_ = row;
-  auto &project = AppState::instance().mutableProject();
-  auto *layer = currentLayer(project, row);
-  if (!layer)
-    return;
-
-  name_->setText(layer->name);
-  text_->setText(layer->text);
-  color_->setText(layer->color.name(QColor::HexArgb));
-  x_->setValue(qRound(layer->position.x()));
-  y_->setValue(qRound(layer->position.y()));
-  w_->setValue(qRound(layer->size.width()));
-  h_->setValue(qRound(layer->size.height()));
-  fontSize_->setValue(layer->fontSize);
-  minFontSize_->setValue(layer->minFontSize);
-  maxLines_->setValue(layer->maxLines);
-  opacity_->setValue(qRound(layer->opacity * 100.0));
-  radius_->setValue(qRound(layer->cornerRadius));
-  rotation_->setValue(layer->rotationDeg);
-  enterDelay_->setValue(layer->enterDelayMs);
-  exitDelay_->setValue(layer->exitDelayMs);
-  duration_->setValue(layer->animationDurationMs);
-  enterAnimation_->setCurrentIndex(static_cast<int>(layer->enterAnimation));
-  exitAnimation_->setCurrentIndex(static_cast<int>(layer->exitAnimation));
-  textAlignH_->setCurrentIndex(static_cast<int>(layer->textHorizontalAlign));
-  textAlignV_->setCurrentIndex(static_cast<int>(layer->textVerticalAlign));
-  autoFit_->setChecked(layer->textAutoFit);
-  wrap_->setChecked(layer->textWrap);
-  splitOverflow_->setChecked(layer->splitOverflow);
-  bibleTemplate_->setChecked(AppState::instance().project().usage == TemplateUsage::BibleText);
-}
-
-void DesignPage::applyProperties()
-{
-  auto &project = AppState::instance().mutableProject();
-  auto *layer = currentLayer(project, currentRow_);
-  if (!layer)
-    return;
-
-  layer->name = name_->text().trimmed();
-  layer->text = text_->text();
-  layer->color = QColor(color_->text().trimmed());
-  if (!layer->color.isValid()) layer->color = QColor("#FFFFFFFF");
-  layer->position = {double(x_->value()), double(y_->value())};
-  layer->size = {double(w_->value()), double(h_->value())};
-  layer->fontSize = fontSize_->value();
-  layer->minFontSize = qMin(fontSize_->value(), minFontSize_->value());
-  layer->maxLines = maxLines_->value();
-  layer->opacity = opacity_->value() / 100.0;
-  layer->cornerRadius = radius_->value();
-  layer->rotationDeg = rotation_->value();
-  layer->enterDelayMs = enterDelay_->value();
-  layer->exitDelayMs = exitDelay_->value();
-  layer->animationDurationMs = duration_->value();
-  layer->enterAnimation = static_cast<AnimationPreset>(enterAnimation_->currentIndex());
-  layer->exitAnimation = static_cast<AnimationPreset>(exitAnimation_->currentIndex());
-  layer->textHorizontalAlign = static_cast<TextHorizontalAlign>(textAlignH_->currentIndex());
-  layer->textVerticalAlign = static_cast<TextVerticalAlign>(textAlignV_->currentIndex());
-  layer->textAutoFit = autoFit_->isChecked();
-  layer->textWrap = wrap_->isChecked();
-  layer->splitOverflow = splitOverflow_->isChecked();
-
-  AppState::instance().notifyModelChanged();
-  rebuildLayerList();
-  refreshCanvas();
-}
-
-void DesignPage::addTextLayer()
-{
-  Layer l;
-  l.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-  l.name = "Texto";
-  l.type = LayerType::Text;
-  l.position = {160, 850};
-  l.size = {680, 90};
-  l.text = "NUEVO TEXTO";
-  AppState::instance().mutableProject().layers.push_back(l);
-  AppState::instance().notifyModelChanged();
-  rebuildLayerList();
-  setCurrentRowSafe(AppState::instance().project().layers.size() - 1);
-}
-
-void DesignPage::addShapeLayer()
-{
-  Layer l;
-  l.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-  l.name = "Forma";
-  l.type = LayerType::Shape;
-  l.position = {120, 820};
-  l.size = {400, 120};
-  l.color = QColor("#444444");
-  AppState::instance().mutableProject().layers.push_back(l);
-  AppState::instance().notifyModelChanged();
-  rebuildLayerList();
-  setCurrentRowSafe(AppState::instance().project().layers.size() - 1);
-}
-
-void DesignPage::addImageLayer()
-{
-  const QString file = QFileDialog::getOpenFileName(this, "Elegir imagen", {}, "Imágenes (*.png *.jpg *.jpeg *.webp)");
-  if (file.isEmpty()) return;
-  Layer l;
-  l.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-  l.name = "Imagen";
-  l.type = LayerType::Image;
-  l.position = {120, 760};
-  l.size = {360, 180};
-  l.imagePath = file;
-  AppState::instance().mutableProject().layers.push_back(l);
-  AppState::instance().notifyModelChanged();
-  rebuildLayerList();
-  setCurrentRowSafe(AppState::instance().project().layers.size() - 1);
-}
-
-void DesignPage::deleteCurrentLayer()
-{
-  if (currentRow_ < 0) return;
-  AppState::instance().removeLayer(currentRow_);
-  if (currentRow_ >= AppState::instance().project().layers.size())
-    currentRow_ = AppState::instance().project().layers.size() - 1;
-  rebuildLayerList();
-  refreshCanvas();
-}
-
-void DesignPage::duplicateCurrentLayer() { if (currentRow_ >= 0) AppState::instance().duplicateLayer(currentRow_); rebuildLayerList(); refreshCanvas(); }
-void DesignPage::moveCurrentLayer(int delta) { if (currentRow_ >= 0) AppState::instance().moveLayer(currentRow_, delta); currentRow_ += delta; rebuildLayerList(); refreshCanvas(); }
-void DesignPage::toggleVisibility() { if (currentRow_ >= 0) AppState::instance().toggleLayerVisible(currentRow_); rebuildLayerList(); refreshCanvas(); }
-void DesignPage::toggleLock() { if (currentRow_ >= 0) AppState::instance().toggleLayerLocked(currentRow_); rebuildLayerList(); refreshCanvas(); }
-void DesignPage::applyStagger() { AppState::instance().staggerLayers(); rebuildLayerList(); refreshCanvas(); }
-void DesignPage::importPsdPlaceholder() { QMessageBox::information(this, "PSD", "La importación PSD por capas sigue disponible como flujo de trabajo, pero esta actualización se enfoca en la plantilla bíblica y el Smart Text Layout."); }
-
-void DesignPage::saveTemplate()
-{
-  bool ok = false;
-  const QString name = QInputDialog::getText(this, "Guardar plantilla", "Nombre de plantilla", QLineEdit::Normal, AppState::instance().project().name, &ok);
-  if (!ok || name.trimmed().isEmpty()) return;
-  QString error;
-  if (!TemplateLibrary::save(AppState::instance().project(), name, &error)) {
-    QMessageBox::warning(this, "Plantillas", error);
-    return;
-  }
-  refreshTemplateLibrary();
 }
 
 void DesignPage::loadSelectedTemplate()
 {
-  const auto *item = templates_->currentItem();
-  if (!item) return;
-  const QString filePath = item->data(Qt::UserRole).toString();
-  if (filePath.isEmpty()) {
-    const QString label = item->text();
-    if (label.contains("Motion")) AppState::instance().loadMotionTemplate();
-    else if (label.contains("Versículo")) AppState::instance().loadScriptureTemplate("Porque de tal manera amó Dios al mundo...", "Juan 3:16");
-    else AppState::instance().resetDemoProject();
-  } else {
-    Project project;
-    QString error;
-    if (!TemplateLibrary::load(filePath, &project, &error)) {
-      QMessageBox::warning(this, "Plantillas", error);
-      return;
-    }
-    AppState::instance().loadProject(project);
+  auto *item = templates_->currentItem(); if (!item) return;
+  const QString id = item->data(Qt::UserRole).toString();
+  if (id == "builtin:pastor") AppState::instance().loadProject(TemplateFactory::pastorLowerThird());
+  else if (id == "builtin:motion") AppState::instance().loadMotionTemplate();
+  else if (id == "builtin:scripture") AppState::instance().loadProject(TemplateFactory::scriptureLowerThird());
+  else {
+    Project p; QString error;
+    if (TemplateLibrary::load(id, &p, &error)) AppState::instance().loadProject(p);
+    else QMessageBox::warning(this, "Plantilla", error);
   }
-  rebuildLayerList();
-  refreshCanvas();
+  timeline_->setCurrentTimeMs(0);
+}
+
+void DesignPage::saveTemplate()
+{
+  bool ok = false; const QString name = QInputDialog::getText(this, "Guardar plantilla", "Nombre:", QLineEdit::Normal, AppState::instance().project().name, &ok);
+  if (!ok || name.trimmed().isEmpty()) return;
+  QString error;
+  if (!TemplateLibrary::save(AppState::instance().project(), name, &error)) QMessageBox::warning(this, "Worship Graphics", error);
+  else { refreshTemplateLibrary(); QMessageBox::information(this, "Worship Graphics", "Plantilla guardada con miniatura."); }
+}
+
+void DesignPage::rebuildLayerList()
+{
+  const QString keepId = (currentRow_ >= 0 && currentRow_ < AppState::instance().project().layers.size()) ? AppState::instance().project().layers[currentRow_].id : QString();
+  layers_->blockSignals(true);
+  layers_->clear();
+  const auto &project = AppState::instance().project();
+  int restore = -1;
+  for (int i = 0; i < project.layers.size(); ++i) {
+    const auto &layer = project.layers[i];
+    QString type = layer.type == LayerType::Group ? "▾" : layer.type == LayerType::Text ? "T" : layer.type == LayerType::Shape ? "◆" : "▧";
+    QString indent = layer.parentId.isEmpty() ? "" : "    ";
+    QString flags = QString("  %1 %2").arg(layer.visible ? "●" : "○", layer.locked ? "L" : "");
+    auto *item = new QListWidgetItem(indent + type + "  " + layer.name + flags); item->setData(Qt::UserRole, layer.id); layers_->addItem(item);
+    if (!keepId.isEmpty() && layer.id == keepId) restore = i;
+  }
+  const int row = restore >= 0 ? restore : qMin(currentRow_, layers_->count() - 1);
+  if (row >= 0 && row < layers_->count()) layers_->setCurrentRow(row); else currentRow_ = -1;
+  layers_->blockSignals(false);
+  if (row >= 0) selectLayer(row);
+  timeline_->setSelectedLayer(currentRow_);
+  timeline_->update();
+}
+
+void DesignPage::setCurrentRowSafe(int row)
+{
+  if (row >= 0 && row < layers_->count()) layers_->setCurrentRow(row); else currentRow_ = -1;
+}
+
+void DesignPage::selectLayer(int row)
+{
+  currentRow_ = row; timeline_->setSelectedLayer(row);
+  const auto &project = AppState::instance().project();
+  if (row < 0 || row >= project.layers.size()) return;
+  const auto &l = project.layers[row];
+  name_->setText(l.name); text_->setText(l.text); color_->setText(l.color.name(QColor::HexArgb));
+  x_->setValue(qRound(l.position.x())); y_->setValue(qRound(l.position.y())); w_->setValue(qRound(l.size.width())); h_->setValue(qRound(l.size.height()));
+  fontSize_->setValue(l.fontSize); minFontSize_->setValue(l.minFontSize); maxLines_->setValue(l.maxLines);
+  opacity_->setValue(qRound(l.opacity * 100)); radius_->setValue(qRound(l.cornerRadius)); rotation_->setValue(l.rotationDeg);
+  enterAnimation_->setCurrentIndex(static_cast<int>(l.enterAnimation)); exitAnimation_->setCurrentIndex(static_cast<int>(l.exitAnimation));
+  enterDelay_->setValue(l.enterDelayMs); exitDelay_->setValue(l.exitDelayMs); enterDuration_->setValue(l.enterDurationMs); exitDuration_->setValue(l.exitDurationMs);
+  textAlignH_->setCurrentIndex(static_cast<int>(l.textHorizontalAlign));
+  textAlignV_->setCurrentIndex(static_cast<int>(l.textVerticalAlign));
+  autoFit_->setChecked(l.textAutoFit); wrap_->setChecked(l.textWrap); splitOverflow_->setChecked(l.splitOverflow);
+  bibleTemplate_->blockSignals(true); bibleTemplate_->setChecked(project.usage == TemplateUsage::BibleText); bibleTemplate_->blockSignals(false);
+  const bool textLayer = l.type == LayerType::Text;
+  text_->setEnabled(textLayer); fontSize_->setEnabled(textLayer); minFontSize_->setEnabled(textLayer); maxLines_->setEnabled(textLayer);
+  textAlignH_->setEnabled(textLayer); textAlignV_->setEnabled(textLayer); autoFit_->setEnabled(textLayer); wrap_->setEnabled(textLayer); splitOverflow_->setEnabled(textLayer);
+}
+
+void DesignPage::applyProperties()
+{
+  auto &state = AppState::instance(); auto &project = state.mutableProject();
+  if (currentRow_ < 0 || currentRow_ >= project.layers.size()) return;
+  auto &l = project.layers[currentRow_]; if (l.locked) { QMessageBox::information(this, "Capa bloqueada", "Desbloquea la capa antes de editarla."); return; }
+  l.name = name_->text().trimmed().isEmpty() ? l.name : name_->text().trimmed();
+  if (l.type == LayerType::Text) l.text = text_->text();
+  const QColor c(color_->text()); if (c.isValid()) l.color = c;
+  l.position = QPointF(x_->value(), y_->value()); l.size = QSizeF(w_->value(), h_->value()); l.fontSize = fontSize_->value();
+  l.minFontSize = qMin(l.fontSize, minFontSize_->value()); l.maxLines = maxLines_->value();
+  l.textHorizontalAlign = static_cast<TextHorizontalAlign>(textAlignH_->currentIndex());
+  l.textVerticalAlign = static_cast<TextVerticalAlign>(textAlignV_->currentIndex());
+  l.textAutoFit = autoFit_->isChecked(); l.textWrap = wrap_->isChecked(); l.splitOverflow = splitOverflow_->isChecked();
+  l.opacity = opacity_->value() / 100.0; l.cornerRadius = radius_->value(); l.rotationDeg = rotation_->value();
+  l.enterAnimation = static_cast<AnimationPreset>(enterAnimation_->currentIndex()); l.exitAnimation = static_cast<AnimationPreset>(exitAnimation_->currentIndex());
+  l.enterDelayMs = enterDelay_->value(); l.exitDelayMs = exitDelay_->value(); l.enterDurationMs = enterDuration_->value(); l.exitDurationMs = exitDuration_->value();
+  state.notifyModelChanged(); timeline_->refreshCurrentFrame();
+}
+
+void DesignPage::addTextLayer()
+{
+  Layer l; l.id = QUuid::createUuid().toString(QUuid::WithoutBraces); l.name = "Texto nuevo"; l.type = LayerType::Text; l.position = {180, 500}; l.size = {700, 100}; l.text = "NUEVO TEXTO"; l.color = Qt::white; l.fontSize = 46;
+  AppState::instance().mutableProject().layers.push_back(l); AppState::instance().notifyModelChanged(); setCurrentRowSafe(AppState::instance().project().layers.size() - 1);
+}
+
+void DesignPage::addShapeLayer()
+{
+  Layer l; l.id = QUuid::createUuid().toString(QUuid::WithoutBraces); l.name = "Forma nueva"; l.type = LayerType::Shape; l.position = {150, 650}; l.size = {600, 120}; l.color = QColor("#555555");
+  AppState::instance().mutableProject().layers.push_back(l); AppState::instance().notifyModelChanged(); setCurrentRowSafe(AppState::instance().project().layers.size() - 1);
+}
+
+void DesignPage::addImageLayer()
+{
+  const QString file = QFileDialog::getOpenFileName(this, "Agregar imagen", {}, "Imágenes (*.png *.jpg *.jpeg *.webp)"); if (file.isEmpty()) return;
+  Layer l; l.id = QUuid::createUuid().toString(QUuid::WithoutBraces); l.name = "Imagen"; l.type = LayerType::Image; l.position = {200, 500}; l.size = {600, 300}; l.imagePath = file; l.enterAnimation = AnimationPreset::Fade; l.exitAnimation = AnimationPreset::Fade;
+  AppState::instance().mutableProject().layers.push_back(l); AppState::instance().notifyModelChanged(); setCurrentRowSafe(AppState::instance().project().layers.size() - 1);
+}
+
+void DesignPage::deleteCurrentLayer()
+{
+  if (currentRow_ < 0) return; const auto &layers = AppState::instance().project().layers; if (currentRow_ >= layers.size()) return;
+  if (QMessageBox::question(this, "Eliminar capa", "¿Eliminar ‘" + layers[currentRow_].name + "’ y sus capas internas?") != QMessageBox::Yes) return;
+  AppState::instance().removeLayer(currentRow_); currentRow_ = qMin(currentRow_, AppState::instance().project().layers.size() - 1); setCurrentRowSafe(currentRow_);
+}
+
+void DesignPage::duplicateCurrentLayer() { if (AppState::instance().duplicateLayer(currentRow_)) setCurrentRowSafe(qMin(currentRow_ + 1, layers_->count() - 1)); }
+void DesignPage::moveCurrentLayer(int delta) { const int target = currentRow_ + delta; if (AppState::instance().moveLayer(currentRow_, delta)) { currentRow_ = target; setCurrentRowSafe(target); } }
+void DesignPage::toggleVisibility() { AppState::instance().toggleLayerVisible(currentRow_); }
+void DesignPage::toggleLock() { AppState::instance().toggleLayerLocked(currentRow_); }
+
+void DesignPage::groupSelection()
+{
+  QVector<int> rows; for (auto *item : layers_->selectedItems()) rows << layers_->row(item);
+  if (!AppState::instance().groupLayers(rows)) QMessageBox::information(this, "Agrupar", "Selecciona dos o más capas.");
+}
+void DesignPage::ungroupCurrent() { AppState::instance().ungroupLayer(currentRow_); }
+void DesignPage::applyStagger() { AppState::instance().staggerLayers(80); timeline_->refreshCurrentFrame(); selectLayer(currentRow_); }
+
+void DesignPage::importPsdPlaceholder()
+{
+  const QString file = QFileDialog::getOpenFileName(this, "Importar diseño de Photoshop", {}, "Photoshop (*.psd *.psb)"); if (file.isEmpty()) return;
+  QMessageBox::information(this, "Importador PSD", "PSD seleccionado. El parser de capas PSD/PSB sigue siendo el siguiente módulo del motor; esta versión ya tiene grupos, imágenes, biblioteca y un Timeline editable para recibir esas capas sin rehacer el editor.");
+}
+
+bool DesignPage::currentLayerIsText() const
+{
+  const auto &layers = AppState::instance().project().layers;
+  return currentRow_ >= 0 && currentRow_ < layers.size() && layers[currentRow_].type == LayerType::Text;
 }
 
 void DesignPage::markBibleTemplate(bool checked)
 {
-  AppState::instance().mutableProject().usage = checked ? TemplateUsage::BibleText : TemplateUsage::Generic;
-  AppState::instance().notifyModelChanged();
+  auto &state = AppState::instance();
+  state.mutableProject().usage = checked ? TemplateUsage::BibleText : TemplateUsage::Generic;
+  state.notifyModelChanged();
 }
 
-void DesignPage::setLayerName(const QString &name)
+void DesignPage::markAsVerseField()
 {
-  auto &project = AppState::instance().mutableProject();
-  auto *layer = currentLayer(project, currentRow_);
-  if (!layer || layer->type != LayerType::Text) return;
-  layer->name = name;
-  AppState::instance().notifyModelChanged();
-  rebuildLayerList();
-  setCurrentRowSafe(currentRow_);
+  if (!currentLayerIsText()) return;
+  auto &state = AppState::instance();
+  state.mutableProject().layers[currentRow_].name = "{{VERSICULO}}";
+  state.mutableProject().usage = TemplateUsage::BibleText;
+  state.notifyModelChanged();
+  selectLayer(currentRow_);
 }
 
-bool DesignPage::hasCurrentTextLayer() const
+void DesignPage::markAsReferenceField()
 {
-  const auto &project = AppState::instance().project();
-  return currentRow_ >= 0 && currentRow_ < project.layers.size() && project.layers[currentRow_].type == LayerType::Text;
+  if (!currentLayerIsText()) return;
+  auto &state = AppState::instance();
+  state.mutableProject().layers[currentRow_].name = "{{REFERENCIA}}";
+  state.mutableProject().usage = TemplateUsage::BibleText;
+  state.notifyModelChanged();
+  selectLayer(currentRow_);
 }
-
-void DesignPage::markAsVerseField() { if (hasCurrentTextLayer()) setLayerName("{{VERSICULO}}"); }
-void DesignPage::markAsReferenceField() { if (hasCurrentTextLayer()) setLayerName("{{REFERENCIA}}"); }
 
 void DesignPage::alignLayerLeft()
 {
-  auto &project = AppState::instance().mutableProject(); auto *layer = currentLayer(project, currentRow_); if (!layer) return;
-  layer->position.setX(0); AppState::instance().notifyModelChanged(); selectLayer(currentRow_);
+  auto &state = AppState::instance(); auto &p = state.mutableProject();
+  if (currentRow_ < 0 || currentRow_ >= p.layers.size()) return;
+  p.layers[currentRow_].position.setX(0.0); state.notifyModelChanged(); selectLayer(currentRow_); timeline_->refreshCurrentFrame();
 }
+
 void DesignPage::alignLayerCenterH()
 {
-  auto &project = AppState::instance().mutableProject(); auto *layer = currentLayer(project, currentRow_); if (!layer) return;
-  layer->position.setX((project.canvas.width() - layer->size.width()) / 2.0); AppState::instance().notifyModelChanged(); selectLayer(currentRow_);
+  auto &state = AppState::instance(); auto &p = state.mutableProject();
+  if (currentRow_ < 0 || currentRow_ >= p.layers.size()) return;
+  p.layers[currentRow_].position.setX((p.canvas.width() - p.layers[currentRow_].size.width()) / 2.0); state.notifyModelChanged(); selectLayer(currentRow_); timeline_->refreshCurrentFrame();
 }
+
 void DesignPage::alignLayerRight()
 {
-  auto &project = AppState::instance().mutableProject(); auto *layer = currentLayer(project, currentRow_); if (!layer) return;
-  layer->position.setX(project.canvas.width() - layer->size.width()); AppState::instance().notifyModelChanged(); selectLayer(currentRow_);
+  auto &state = AppState::instance(); auto &p = state.mutableProject();
+  if (currentRow_ < 0 || currentRow_ >= p.layers.size()) return;
+  p.layers[currentRow_].position.setX(p.canvas.width() - p.layers[currentRow_].size.width()); state.notifyModelChanged(); selectLayer(currentRow_); timeline_->refreshCurrentFrame();
 }
+
 void DesignPage::alignLayerTop()
 {
-  auto &project = AppState::instance().mutableProject(); auto *layer = currentLayer(project, currentRow_); if (!layer) return;
-  layer->position.setY(0); AppState::instance().notifyModelChanged(); selectLayer(currentRow_);
+  auto &state = AppState::instance(); auto &p = state.mutableProject();
+  if (currentRow_ < 0 || currentRow_ >= p.layers.size()) return;
+  p.layers[currentRow_].position.setY(0.0); state.notifyModelChanged(); selectLayer(currentRow_); timeline_->refreshCurrentFrame();
 }
+
 void DesignPage::alignLayerCenterV()
 {
-  auto &project = AppState::instance().mutableProject(); auto *layer = currentLayer(project, currentRow_); if (!layer) return;
-  layer->position.setY((project.canvas.height() - layer->size.height()) / 2.0); AppState::instance().notifyModelChanged(); selectLayer(currentRow_);
+  auto &state = AppState::instance(); auto &p = state.mutableProject();
+  if (currentRow_ < 0 || currentRow_ >= p.layers.size()) return;
+  p.layers[currentRow_].position.setY((p.canvas.height() - p.layers[currentRow_].size.height()) / 2.0); state.notifyModelChanged(); selectLayer(currentRow_); timeline_->refreshCurrentFrame();
 }
+
 void DesignPage::alignLayerBottom()
 {
-  auto &project = AppState::instance().mutableProject(); auto *layer = currentLayer(project, currentRow_); if (!layer) return;
-  layer->position.setY(project.canvas.height() - layer->size.height()); AppState::instance().notifyModelChanged(); selectLayer(currentRow_);
+  auto &state = AppState::instance(); auto &p = state.mutableProject();
+  if (currentRow_ < 0 || currentRow_ >= p.layers.size()) return;
+  p.layers[currentRow_].position.setY(p.canvas.height() - p.layers[currentRow_].size.height()); state.notifyModelChanged(); selectLayer(currentRow_); timeline_->refreshCurrentFrame();
 }
 
 void DesignPage::refreshCanvas()
 {
   const QImage frame = AppState::instance().previewFrame();
-  if (frame.isNull()) { canvas_->clear(); return; }
   canvas_->setPixmap(QPixmap::fromImage(frame).scaled(canvas_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
-}
-
-void DesignPage::setCurrentRowSafe(int row)
-{
-  if (layers_->count() == 0) return;
-  row = qBound(0, row, layers_->count() - 1);
-  layers_->setCurrentRow(row);
 }
 
 } // namespace wg

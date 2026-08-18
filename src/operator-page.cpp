@@ -315,8 +315,8 @@ Project OperatorPage::projectForServiceKind(const QString &kind) const
 
   if (kind == "scripture") {
     if (currentPassage_.valid)
-      return TemplateFactory::scriptureLowerThird(currentPassage_.text, currentPassage_.reference);
-    return TemplateFactory::scriptureLowerThird();
+      return AppState::instance().bibleProjectForPassage(currentPassage_.text, currentPassage_.reference);
+    return AppState::instance().bibleProjectForPassage("Porque de tal manera amó Dios al mundo...", "Juan 3:16");
   }
 
   if (kind == "sermon")
@@ -531,9 +531,7 @@ void OperatorPage::prepareBibleForProgram()
   if (!currentPassage_.valid)
     return;
 
-  AppState::instance().loadProject(
-      TemplateFactory::scriptureLowerThird(currentPassage_.text, currentPassage_.reference));
-
+  AppState::instance().applyBiblePassage(currentPassage_.text, currentPassage_.reference);
   preparedLabel_->setText("PRÓXIMO · " + currentPassage_.reference + " · aún no está al aire");
 }
 
@@ -544,7 +542,7 @@ void OperatorPage::addBibleToService()
 
   appendPrepared("Versículo · " + currentPassage_.reference,
                  "scripture",
-                 TemplateFactory::scriptureLowerThird(currentPassage_.text, currentPassage_.reference),
+                 AppState::instance().bibleProjectForPassage(currentPassage_.text, currentPassage_.reference),
                  true);
 
   tabs_->setCurrentIndex(0);

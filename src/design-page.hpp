@@ -8,7 +8,6 @@ class QSpinBox;
 class QDoubleSpinBox;
 class QComboBox;
 class QCheckBox;
-class QPushButton;
 
 namespace wg {
 class TimelineWidget;
@@ -29,6 +28,8 @@ private slots:
   void moveCurrentLayer(int delta);
   void toggleVisibility();
   void toggleLock();
+  void groupSelection();
+  void ungroupCurrent();
   void applyStagger();
   void importPsdPlaceholder();
   void saveTemplate();
@@ -45,8 +46,7 @@ private slots:
 private:
   void refreshCanvas();
   void setCurrentRowSafe(int row);
-  void setLayerName(const QString &name);
-  bool hasCurrentTextLayer() const;
+  bool currentLayerIsText() const;
 
   QListWidget *templates_ = nullptr;
   QListWidget *layers_ = nullptr;
@@ -66,7 +66,8 @@ private:
   QDoubleSpinBox *rotation_ = nullptr;
   QSpinBox *enterDelay_ = nullptr;
   QSpinBox *exitDelay_ = nullptr;
-  QSpinBox *duration_ = nullptr;
+  QSpinBox *enterDuration_ = nullptr;
+  QSpinBox *exitDuration_ = nullptr;
   QComboBox *enterAnimation_ = nullptr;
   QComboBox *exitAnimation_ = nullptr;
   QComboBox *textAlignH_ = nullptr;
@@ -75,6 +76,7 @@ private:
   QCheckBox *wrap_ = nullptr;
   QCheckBox *splitOverflow_ = nullptr;
   QCheckBox *bibleTemplate_ = nullptr;
+  TimelineWidget *timeline_ = nullptr;
   int currentRow_ = -1;
 };
 } // namespace wg

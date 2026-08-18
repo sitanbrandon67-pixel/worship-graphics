@@ -64,10 +64,12 @@ bool TemplateLibrary::save(const Project &project, const QString &name, QString 
     o["color"] = l.color.name(QColor::HexArgb); o["textured"] = l.textured;
     o["text"] = l.text; o["fontFamily"] = l.fontFamily; o["fontSize"] = l.fontSize; o["minFontSize"] = l.minFontSize; o["bold"] = l.bold;
     o["autoFit"] = l.textAutoFit; o["wrap"] = l.textWrap; o["splitOverflow"] = l.splitOverflow; o["maxLines"] = l.maxLines;
-    o["textHAlign"] = static_cast<int>(l.textHorizontalAlign); o["textVAlign"] = static_cast<int>(l.textVerticalAlign);
+    o["textHAlign"] = static_cast<int>(l.textHorizontalAlign);
+    o["textVAlign"] = static_cast<int>(l.textVerticalAlign);
     o["imagePath"] = l.imagePath;
     o["enter"] = static_cast<int>(l.enterAnimation); o["exit"] = static_cast<int>(l.exitAnimation);
-    o["enterDelay"] = l.enterDelayMs; o["exitDelay"] = l.exitDelayMs; o["duration"] = l.animationDurationMs;
+    o["enterDelay"] = l.enterDelayMs; o["exitDelay"] = l.exitDelayMs;
+    o["enterDuration"] = l.enterDurationMs; o["exitDuration"] = l.exitDurationMs;
     layers.append(o);
   }
   root["layers"] = layers;
@@ -115,13 +117,16 @@ bool TemplateLibrary::load(const QString &filePath, Project *project, QString *e
     l.size = {o.value("w").toDouble(400), o.value("h").toDouble(120)};
     l.opacity = o.value("opacity").toDouble(1.0); l.rotationDeg = o.value("rotation").toDouble(); l.cornerRadius = o.value("radius").toDouble(18.0);
     l.color = QColor(o.value("color").toString("#FFFFFFFF")); l.textured = o.value("textured").toBool(false);
-    l.text = o.value("text").toString(); l.fontFamily = o.value("fontFamily").toString("Segoe UI"); l.fontSize = o.value("fontSize").toInt(48); l.minFontSize = o.value("minFontSize").toInt(24); l.bold = o.value("bold").toBool(false);
+    l.text = o.value("text").toString(); l.fontFamily = o.value("fontFamily").toString("Segoe UI"); l.fontSize = o.value("fontSize").toInt(48); l.minFontSize = o.value("minFontSize").toInt(qMin(24, l.fontSize)); l.bold = o.value("bold").toBool(false);
     l.textAutoFit = o.value("autoFit").toBool(true); l.textWrap = o.value("wrap").toBool(true); l.splitOverflow = o.value("splitOverflow").toBool(true); l.maxLines = o.value("maxLines").toInt(2);
-    l.textHorizontalAlign = static_cast<TextHorizontalAlign>(o.value("textHAlign").toInt(static_cast<int>(TextHorizontalAlign::Center)));
+    l.textHorizontalAlign = static_cast<TextHorizontalAlign>(o.value("textHAlign").toInt(static_cast<int>(TextHorizontalAlign::Left)));
     l.textVerticalAlign = static_cast<TextVerticalAlign>(o.value("textVAlign").toInt(static_cast<int>(TextVerticalAlign::Middle)));
     l.imagePath = o.value("imagePath").toString();
     l.enterAnimation = static_cast<AnimationPreset>(o.value("enter").toInt()); l.exitAnimation = static_cast<AnimationPreset>(o.value("exit").toInt());
-    l.enterDelayMs = o.value("enterDelay").toInt(); l.exitDelayMs = o.value("exitDelay").toInt(); l.animationDurationMs = o.value("duration").toInt(450);
+    l.enterDelayMs = o.value("enterDelay").toInt(); l.exitDelayMs = o.value("exitDelay").toInt();
+    const int legacyDuration = o.value("duration").toInt(450);
+    l.enterDurationMs = o.value("enterDuration").toInt(legacyDuration);
+    l.exitDurationMs = o.value("exitDuration").toInt(legacyDuration);
     out.layers.push_back(l);
   }
   *project = std::move(out);
