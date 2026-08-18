@@ -10,6 +10,7 @@ jobs:
     runs-on: windows-2022
     permissions:
       contents: read
+
     steps:
       - name: Checkout Worship Graphics
         uses: actions/checkout@v4
@@ -27,7 +28,9 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile $zip
           Expand-Archive -Path $zip -DestinationPath $dst -Force
           $template = Get-ChildItem $dst -Directory | Select-Object -First 1
+
           Copy-Item (Join-Path $template.FullName 'cmake') -Destination . -Recurse -Force
+
           New-Item -ItemType Directory -Path '.github/scripts' -Force | Out-Null
           Copy-Item (Join-Path $template.FullName '.github/scripts/*') -Destination '.github/scripts' -Recurse -Force
 
@@ -41,16 +44,49 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         run: |
-          cpack --config build_x64/CPackConfig.cmake -C Release -G NSIS
           New-Item -ItemType Directory -Path artifacts -Force | Out-Null
-          Get-ChildItem build_x64 -Filter '*.exe' -Recurse | Copy-Item -Destination artifacts
-          if (Test-Path 'release/Release') {
-            Compress-Archive -Path 'release/Release/*' -DestinationPath 'artifacts/WorshipGraphics-Plugin-Windows.zip' -Force
+
+          cpack `
+            --config build_x64/CPackConfig.cmake `
+            -C Release `
+            -G NSIS `
+            -B artifacts
+
+          $installer = Get-ChildItem artifacts -Filter 'WorshipGraphics-Setup-*.exe' | Select-Object -First 1
+
+          if (-not $installer) {
+            Write-Error "Worship Graphics installer was not generated."
+            exit 1
           }
+
+          Write-Host "Installer generated:"
+          Write-Host $installer.FullName
+
+          if (Test-Path 'release/Release') {
+            Compress-Archive `
+              -Path 'release/Release/*' `
+              -DestinationPath 'artifacts/WorshipGraphics-Plugin-Windows.zip' `
+              -Force
+          }
+
+      - name: Verify Worship Graphics DLL
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem 'release/Release' -Filter 'worship-graphics.dll' -Recurse | Select-Object -First 1
+
+          if (-not $dll) {
+            Write-Error "worship-graphics.dll was not found in the release tree."
+            exit 1
+          }
+
+          Write-Host "Plugin DLL:"
+          Write-Host $dll.FullName
 
       - name: Upload installer and plugin
         uses: actions/upload-artifact@v4
         with:
           name: WorshipGraphics-Windows
-          path: artifacts/*
+          path: |
+            artifacts/WorshipGraphics-Setup-*.exe
+            artifacts/WorshipGraphics-Plugin-Windows.zip
           if-no-files-found: error
