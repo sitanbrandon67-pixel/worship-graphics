@@ -479,8 +479,7 @@ void DesignPage::refreshTemplateLibrary()
   };
   for (const auto &b : builtins) {
     if (TemplateLibrary::isBuiltinHidden(b.id)) continue;
-    auto *item = new QListWidgetItem(projectIcon(b.p), b.name + "
-INTEGRADA");
+    auto *item = new QListWidgetItem(projectIcon(b.p), b.name + "\nINTEGRADA");
     item->setData(Qt::UserRole, b.id);
     item->setToolTip("Plantilla integrada · clic para seleccionar");
     item->setSizeHint({190, 118});
@@ -488,8 +487,7 @@ INTEGRADA");
   }
   for (const auto &entry : TemplateLibrary::entries()) {
     QIcon icon; if (!entry.thumbnailPath.isEmpty()) icon = QIcon(entry.thumbnailPath);
-    auto *item = new QListWidgetItem(icon, entry.name + "
-MÍA");
+    auto *item = new QListWidgetItem(icon, entry.name + "\nMÍA");
     item->setData(Qt::UserRole, entry.filePath);
     item->setToolTip("Plantilla personal · clic para seleccionar");
     item->setSizeHint({190, 118});

@@ -1,19 +1,26 @@
-WORSHIP GRAPHICS v0.3.9 - COMPILE HOTFIX
+WORSHIP GRAPHICS v0.4.1 - COMPILE HOTFIX
 
 Replace only:
-- src/operator-page.cpp
+- src/design-page.cpp
 - buildspec.json
 
-Fix:
-v0.3.8 declared templateName as const QString and then called QString::replace(),
-which is a mutating method. This causes MSVC compilation to fail.
+Compile fix:
+Two UI labels in v0.4.0 were accidentally written as literal source-code line breaks:
 
-No other Worship Graphics functionality is changed.
-Template routing, deletion, responsive UI, Smart Text, Timeline and OBS output
-remain as in v0.3.8.
+  b.name + "
+  INTEGRADA"
 
-Commit suggestion:
-Fix v0.3.8 QString compile error
+  entry.name + "
+  MÍA"
+
+They are now valid C++ escaped newlines:
+
+  b.name + "\nINTEGRADA"
+  entry.name + "\nMÍA"
+
+No template-library behavior is removed.
+Selection, default-template assignment, delete/hide, restore built-ins,
+Operator template routing and all previous features remain.
 
 Expected installer:
-WorshipGraphics-Setup-0.3.9.exe
+WorshipGraphics-Setup-0.4.1.exe
