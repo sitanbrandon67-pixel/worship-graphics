@@ -18,6 +18,19 @@ QString defaultKey(const QString &serviceKind)
 {
   return "templates/default/" + serviceKind.trimmed().toLower();
 }
+
+QString hiddenBuiltinsKey()
+{
+  return "templates/hiddenBuiltins";
+}
+
+const QStringList &builtinIds()
+{
+  static const QStringList ids = {
+      "builtin:pastor", "builtin:motion", "builtin:scripture",
+      "builtin:sermon", "builtin:worship", "builtin:announcement"};
+  return ids;
+}
 }
 
 QString TemplateLibrary::libraryPath()
@@ -165,7 +178,7 @@ bool TemplateLibrary::remove(const QString &filePath, QString *error)
 
   const QString expectedDir = QDir::cleanPath(QFileInfo(libraryPath()).absoluteFilePath());
   const QString actualDir = QDir::cleanPath(info.absolutePath());
-  if (expectedDir != actualDir) {
+  if (QString::compare(expectedDir, actualDir, Qt::CaseInsensitive) != 0) {
     if (error) *error = "Solo se pueden eliminar plantillas personales de Worship Graphics.";
     return false;
   }
@@ -188,17 +201,101 @@ bool TemplateLibrary::remove(const QString &filePath, QString *error)
   return true;
 }
 
+bool TemplateLibrary::removeOrHide(const QString &templateId, QString *error)
+{
+  if (templateId.startsWith("builtin:")) {
+    if (!builtinIds().contains(templateId)) {
+      if (error) *error = "La plantilla integrada no es válida.";
+      return false;
+    }
+
+    QSettings settings("WorshipGraphics", "WorshipGraphics");
+    QStringList hidden = settings.value(hiddenBuiltinsKey()).toStringList();
+    if (!hidden.contains(templateId)) hidden.push_back(templateId);
+    settings.setValue(hiddenBuiltinsKey(), hidden);
+
+    const QStringList kinds = {"pastor", "scripture", "sermon", "worship", "announcement"};
+    for (const QString &kind : kinds) {
+      const QString key = defaultKey(kind);
+      if (settings.value(key).toString() == templateId)
+        settings.remove(key);
+    }
+    settings.sync();
+    return true;
+  }
+
+  return remove(templateId, error);
+}
+
+bool TemplateLibrary::isBuiltinHidden(const QString &templateId)
+{
+  if (!templateId.startsWith("builtin:")) return false;
+  QSettings settings("WorshipGraphics", "WorshipGraphics");
+  return settings.value(hiddenBuiltinsKey()).toStringList().contains(templateId);
+}
+
+void TemplateLibrary::restoreBuiltins()
+{
+  QSettings settings("WorshipGraphics", "WorshipGraphics");
+  settings.remove(hiddenBuiltinsKey());
+  settings.sync();
+}
+
+QString TemplateLibrary::displayNameForId(const QString &templateId)
+{
+  if (templateId == "builtin:pastor") return "Pastor Clean";
+  if (templateId == "builtin:motion") return "Motion Pieces";
+  if (templateId == "builtin:scripture") return "Versículo";
+  if (templateId == "builtin:sermon") return "Tema de prédica";
+  if (templateId == "builtin:worship") return "Alabanza";
+  if (templateId == "builtin:announcement") return "Anuncio";
+
+  if (!templateId.isEmpty()) {
+    Project p;
+    if (load(templateId, &p, nullptr))
+      return p.name;
+  }
+  return QString();
+}
+
+bool TemplateLibrary::isValidTemplateId(const QString &templateId)
+{
+  if (templateId.startsWith("builtin:"))
+    return builtinIds().contains(templateId);
+  if (templateId.isEmpty()) return false;
+  const QFileInfo info(templateId);
+  return info.exists() && info.isFile() && info.suffix().compare("wgtpl", Qt::CaseInsensitive) == 0;
+}
+
 void TemplateLibrary::setDefaultTemplate(const QString &serviceKind, const QString &templateId)
 {
   QSettings settings("WorshipGraphics", "WorshipGraphics");
-  settings.setValue(defaultKey(serviceKind), templateId);
+  const QString key = defaultKey(serviceKind);
+  if (!isValidTemplateId(templateId))
+    settings.remove(key);
+  else {
+    if (templateId.startsWith("builtin:")) {
+      QStringList hidden = settings.value(hiddenBuiltinsKey()).toStringList();
+      hidden.removeAll(templateId);
+      settings.setValue(hiddenBuiltinsKey(), hidden);
+    }
+    settings.setValue(key, templateId);
+  }
   settings.sync();
 }
 
 QString TemplateLibrary::defaultTemplate(const QString &serviceKind)
 {
   QSettings settings("WorshipGraphics", "WorshipGraphics");
-  return settings.value(defaultKey(serviceKind)).toString();
+  const QString key = defaultKey(serviceKind);
+  const QString id = settings.value(key).toString();
+  if (id.isEmpty()) return QString();
+  if (!isValidTemplateId(id)) {
+    settings.remove(key);
+    settings.sync();
+    return QString();
+  }
+  return id;
 }
 
 } // namespace wg

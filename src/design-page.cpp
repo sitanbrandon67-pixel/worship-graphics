@@ -17,6 +17,7 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QInputDialog>
+#include <QItemSelectionModel>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -118,19 +119,30 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   templateTarget->addItem("Tema de prédica", "sermon");
   templateTarget->addItem("Alabanza", "worship");
   templateTarget->addItem("Anuncio", "announcement");
-  auto *useTemplate = new QPushButton("USAR COMO ACTIVA");
+  auto *useTemplate = new QPushButton("USAR COMO PREDETERMINADA");
   useTemplate->setObjectName("wgPrimary");
-  auto *deleteTemplate = new QPushButton("ELIMINAR PLANTILLA");
+  auto *openTemplate = new QPushButton("ABRIR EN DISEÑO");
+  auto *deleteTemplate = new QPushButton("ELIMINAR / OCULTAR");
   deleteTemplate->setObjectName("wgDanger");
-  auto *activeTemplateLabel = new QLabel("Activa: integrada");
+  auto *restoreBuiltins = new QPushButton("RESTAURAR INTEGRADAS");
+  auto *activeTemplateLabel = new QLabel("Predeterminada: integrada");
   activeTemplateLabel->setObjectName("wgSubtle");
+  auto *selectedTemplateLabel = new QLabel("Seleccionada: ninguna");
+  selectedTemplateLabel->setObjectName("wgSubtle");
+  selectedTemplateLabel->setWordWrap(true);
   libraryActions->addItem(templateTarget);
   libraryActions->addItem(useTemplate);
+  libraryActions->addItem(openTemplate);
   libraryActions->addItem(deleteTemplate);
+  libraryActions->addItem(restoreBuiltins);
   libraryActions->addItem(activeTemplateLabel);
+  libraryLayout->addWidget(selectedTemplateLabel);
   libraryLayout->addWidget(libraryActions);
   templates_ = new QListWidget();
   templates_->setObjectName("wgTemplateLibrary");
+  templates_->setSelectionMode(QAbstractItemView::SingleSelection);
+  templates_->setSelectionBehavior(QAbstractItemView::SelectItems);
+  templates_->setFocusPolicy(Qt::StrongFocus);
   templates_->setViewMode(QListView::IconMode);
   templates_->setResizeMode(QListView::Adjust);
   templates_->setMovement(QListView::Static);
@@ -321,32 +333,49 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   auto refreshActiveTemplateLabel = [templateTarget, activeTemplateLabel]() {
     const QString kind = templateTarget->currentData().toString();
     const QString id = TemplateLibrary::defaultTemplate(kind);
-    QString name;
-    if (id.isEmpty()) {
-      if (kind == "scripture") name = "Versículo";
-      else if (kind == "sermon") name = "Tema de prédica";
-      else if (kind == "worship") name = "Alabanza";
-      else if (kind == "announcement") name = "Anuncio";
-      else name = "Pastor Clean";
-    }
-    if (id == "builtin:pastor") name = "Pastor Clean";
-    else if (id == "builtin:motion") name = "Motion Pieces";
-    else if (id == "builtin:scripture") name = "Versículo";
-    else if (id == "builtin:sermon") name = "Tema de prédica";
-    else if (id == "builtin:worship") name = "Alabanza";
-    else if (id == "builtin:announcement") name = "Anuncio";
-    else if (!id.isEmpty()) name = QFileInfo(id).completeBaseName().replace('_', ' ');
-    activeTemplateLabel->setText("Activa: " + name);
+    const QString name = TemplateLibrary::displayNameForId(id);
+    activeTemplateLabel->setText("Predeterminada: " + (name.isEmpty() ? QString("ninguna elegida") : name));
   };
+
+  auto refreshSelectedTemplateLabel = [this, selectedTemplateLabel, useTemplate, deleteTemplate, openTemplate]() {
+    auto *item = templates_->currentItem();
+    if (!item) {
+      selectedTemplateLabel->setText("Seleccionada: ninguna");
+      useTemplate->setEnabled(false);
+      deleteTemplate->setEnabled(false);
+      openTemplate->setEnabled(false);
+      return;
+    }
+    const QString id = item->data(Qt::UserRole).toString();
+    const bool builtin = id.startsWith("builtin:");
+    selectedTemplateLabel->setText(QString("Seleccionada: %1 · %2").arg(item->text(), builtin ? "INTEGRADA" : "MÍA"));
+    useTemplate->setEnabled(true);
+    deleteTemplate->setEnabled(true);
+    openTemplate->setEnabled(true);
+  };
+
+  connect(templates_, &QListWidget::itemClicked, this, [this, refreshSelectedTemplateLabel](QListWidgetItem *item) {
+    if (!item) return;
+    templates_->setCurrentItem(item, QItemSelectionModel::ClearAndSelect);
+    refreshSelectedTemplateLabel();
+  });
+  connect(templates_, &QListWidget::currentItemChanged, this, [refreshSelectedTemplateLabel](QListWidgetItem *, QListWidgetItem *) {
+    refreshSelectedTemplateLabel();
+  });
 
   connect(templateTarget, &QComboBox::currentIndexChanged, this, [refreshActiveTemplateLabel](int) {
     refreshActiveTemplateLabel();
   });
 
+  connect(openTemplate, &QPushButton::clicked, this, [this] {
+    if (!templates_->currentItem()) return;
+    loadSelectedTemplate();
+  });
+
   connect(useTemplate, &QPushButton::clicked, this, [this, templateTarget, refreshActiveTemplateLabel] {
     auto *item = templates_->currentItem();
     if (!item) {
-      QMessageBox::information(this, "Plantillas", "Selecciona primero una plantilla de la biblioteca.");
+      QMessageBox::information(this, "Plantillas", "Haz un clic sobre la plantilla que quieres seleccionar.");
       return;
     }
 
@@ -362,43 +391,55 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
       }
       if (!validBible) {
         QMessageBox::warning(this, "Plantilla bíblica",
-                             "Para Versículo, selecciona una plantilla marcada como PLANTILLA BÍBLICA y con {{VERSICULO}} / {{REFERENCIA}}.");
+                             "Para Versículo usa una plantilla marcada como PLANTILLA BÍBLICA con {{VERSICULO}} y {{REFERENCIA}}.");
         return;
       }
     }
 
     TemplateLibrary::setDefaultTemplate(kind, id);
+    if (TemplateLibrary::defaultTemplate(kind) != id) {
+      QMessageBox::warning(this, "Plantilla predeterminada", "No se pudo guardar esta plantilla como predeterminada.");
+      return;
+    }
     refreshActiveTemplateLabel();
-    QMessageBox::information(this, "Plantilla activa",
-                             item->text() + " será la plantilla predeterminada para " + templateTarget->currentText() + ".");
+    QMessageBox::information(this, "Plantilla predeterminada",
+                             item->text() + " quedó como predeterminada para " + templateTarget->currentText() + ".");
   });
 
-  connect(deleteTemplate, &QPushButton::clicked, this, [this, refreshActiveTemplateLabel] {
+  connect(deleteTemplate, &QPushButton::clicked, this, [this, refreshActiveTemplateLabel, refreshSelectedTemplateLabel] {
     auto *item = templates_->currentItem();
     if (!item) {
-      QMessageBox::information(this, "Plantillas", "Selecciona la plantilla que quieres eliminar.");
+      QMessageBox::information(this, "Plantillas", "Haz un clic sobre la plantilla que quieres eliminar u ocultar.");
       return;
     }
 
     const QString id = item->data(Qt::UserRole).toString();
-    if (id.startsWith("builtin:")) {
-      QMessageBox::information(this, "Plantillas", "Las plantillas integradas no se eliminan; puedes simplemente no usarlas.");
-      return;
-    }
-
-    if (QMessageBox::question(this, "Eliminar plantilla",
-                              "¿Eliminar definitivamente ‘" + item->text() + "’ de tu biblioteca?") != QMessageBox::Yes)
+    const bool builtin = id.startsWith("builtin:");
+    const QString action = builtin ? "ocultar" : "eliminar definitivamente";
+    if (QMessageBox::question(this, "Biblioteca de plantillas",
+                              "¿Quieres " + action + " ‘" + item->text() + "’?") != QMessageBox::Yes)
       return;
 
     QString error;
-    if (!TemplateLibrary::remove(id, &error)) {
+    if (!TemplateLibrary::removeOrHide(id, &error)) {
       QMessageBox::warning(this, "Plantillas", error);
       return;
     }
+
     refreshTemplateLibrary();
     refreshActiveTemplateLabel();
+    refreshSelectedTemplateLabel();
   });
+
+  connect(restoreBuiltins, &QPushButton::clicked, this, [this, refreshActiveTemplateLabel, refreshSelectedTemplateLabel] {
+    TemplateLibrary::restoreBuiltins();
+    refreshTemplateLibrary();
+    refreshActiveTemplateLabel();
+    refreshSelectedTemplateLabel();
+  });
+
   refreshActiveTemplateLabel();
+  refreshSelectedTemplateLabel();
   connect(bibleTemplate_, &QCheckBox::toggled, this, &DesignPage::markBibleTemplate);
   connect(verseField, &QPushButton::clicked, this, &DesignPage::markAsVerseField);
   connect(referenceField, &QPushButton::clicked, this, &DesignPage::markAsReferenceField);
@@ -431,14 +472,28 @@ void DesignPage::refreshTemplateLibrary()
   const QList<Builtin> builtins = {
     {"builtin:pastor", "Pastor Clean", TemplateFactory::pastorLowerThird()},
     {"builtin:motion", "Motion Pieces", TemplateFactory::motionPiecesLowerThird()},
-    {"builtin:scripture", "Versículo", TemplateFactory::scriptureLowerThird()}
+    {"builtin:scripture", "Versículo", TemplateFactory::scriptureLowerThird()},
+    {"builtin:sermon", "Tema de prédica", TemplateFactory::sermonTitleLowerThird()},
+    {"builtin:worship", "Alabanza", TemplateFactory::worshipLowerThird()},
+    {"builtin:announcement", "Anuncio", TemplateFactory::announcementLowerThird()}
   };
   for (const auto &b : builtins) {
-    auto *item = new QListWidgetItem(projectIcon(b.p), b.name); item->setData(Qt::UserRole, b.id); item->setSizeHint({185, 112}); templates_->addItem(item);
+    if (TemplateLibrary::isBuiltinHidden(b.id)) continue;
+    auto *item = new QListWidgetItem(projectIcon(b.p), b.name + "
+INTEGRADA");
+    item->setData(Qt::UserRole, b.id);
+    item->setToolTip("Plantilla integrada · clic para seleccionar");
+    item->setSizeHint({190, 118});
+    templates_->addItem(item);
   }
   for (const auto &entry : TemplateLibrary::entries()) {
     QIcon icon; if (!entry.thumbnailPath.isEmpty()) icon = QIcon(entry.thumbnailPath);
-    auto *item = new QListWidgetItem(icon, entry.name); item->setData(Qt::UserRole, entry.filePath); item->setSizeHint({185, 112}); templates_->addItem(item);
+    auto *item = new QListWidgetItem(icon, entry.name + "
+MÍA");
+    item->setData(Qt::UserRole, entry.filePath);
+    item->setToolTip("Plantilla personal · clic para seleccionar");
+    item->setSizeHint({190, 118});
+    templates_->addItem(item);
   }
 }
 
@@ -449,6 +504,9 @@ void DesignPage::loadSelectedTemplate()
   if (id == "builtin:pastor") AppState::instance().loadProject(TemplateFactory::pastorLowerThird());
   else if (id == "builtin:motion") AppState::instance().loadMotionTemplate();
   else if (id == "builtin:scripture") AppState::instance().loadProject(TemplateFactory::scriptureLowerThird());
+  else if (id == "builtin:sermon") AppState::instance().loadProject(TemplateFactory::sermonTitleLowerThird());
+  else if (id == "builtin:worship") AppState::instance().loadProject(TemplateFactory::worshipLowerThird());
+  else if (id == "builtin:announcement") AppState::instance().loadProject(TemplateFactory::announcementLowerThird());
   else {
     Project p; QString error;
     if (TemplateLibrary::load(id, &p, &error)) AppState::instance().loadProject(p);

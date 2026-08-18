@@ -370,12 +370,35 @@ void OperatorPage::seedPreparedService()
 {
   prepared_.clear();
   const QStringList kinds = {"pastor", "scripture", "sermon", "worship", "announcement"};
+
   for (const QString &kind : kinds) {
     QString id = TemplateLibrary::defaultTemplate(kind);
-    if (id.isEmpty()) id = defaultBuiltinId(kind);
+
+    if (id.isEmpty()) {
+      if (kind == "pastor") {
+        if (!TemplateLibrary::isBuiltinHidden("builtin:pastor")) id = "builtin:pastor";
+        else if (!TemplateLibrary::isBuiltinHidden("builtin:motion")) id = "builtin:motion";
+      } else {
+        const QString builtin = defaultBuiltinId(kind);
+        if (!TemplateLibrary::isBuiltinHidden(builtin)) id = builtin;
+      }
+    }
+
+    if (id.isEmpty()) {
+      for (const TemplateEntry &entry : TemplateLibrary::entries()) {
+        if (kind == "scripture" && entry.usage != TemplateUsage::BibleText) continue;
+        if (kind != "scripture" && entry.usage == TemplateUsage::BibleText) continue;
+        id = entry.filePath;
+        break;
+      }
+    }
+
+    if (id.isEmpty()) continue;
     Project p = projectForTemplate(kind, id);
-    appendPrepared(p.name, kind, p, false);
+    if (!p.layers.isEmpty())
+      appendPrepared(p.name, kind, p, false);
   }
+
   rebuildPreparedList(0);
 }
 
@@ -426,11 +449,14 @@ void OperatorPage::populateTemplateCombo(QComboBox *combo, const QString &kind) 
   combo->setEnabled(true);
 
   if (kind == "pastor") {
-    combo->addItem("Integrada · Pastor Clean", "builtin:pastor");
-    combo->addItem("Integrada · Motion Pieces", "builtin:motion");
+    if (!TemplateLibrary::isBuiltinHidden("builtin:pastor"))
+      combo->addItem("Integrada · Pastor Clean", "builtin:pastor");
+    if (!TemplateLibrary::isBuiltinHidden("builtin:motion"))
+      combo->addItem("Integrada · Motion Pieces", "builtin:motion");
   } else {
     const QString builtin = defaultBuiltinId(kind);
-    combo->addItem("Integrada · " + builtinName(builtin), builtin);
+    if (!TemplateLibrary::isBuiltinHidden(builtin))
+      combo->addItem("Integrada · " + builtinName(builtin), builtin);
   }
 
   for (const TemplateEntry &entry : TemplateLibrary::entries()) {
@@ -442,9 +468,15 @@ void OperatorPage::populateTemplateCombo(QComboBox *combo, const QString &kind) 
     combo->addItem("Mi plantilla · " + entry.name, entry.filePath);
   }
 
+  if (combo->count() == 0) {
+    combo->addItem("Sin plantillas disponibles", QString());
+    combo->setEnabled(false);
+    combo->blockSignals(false);
+    return;
+  }
+
   QString preferred = TemplateLibrary::defaultTemplate(kind);
-  if (preferred.isEmpty()) preferred = defaultBuiltinId(kind);
-  const int preferredIndex = combo->findData(preferred);
+  const int preferredIndex = preferred.isEmpty() ? -1 : combo->findData(preferred);
   combo->setCurrentIndex(preferredIndex >= 0 ? preferredIndex : 0);
   combo->blockSignals(false);
 }
@@ -489,8 +521,8 @@ Project OperatorPage::projectForServiceKind(const QString &kind) const
   QString id = templateChoice_ ? templateChoice_->currentData().toString() : QString();
   if (id.isEmpty()) {
     id = TemplateLibrary::defaultTemplate(kind);
-    if (id.isEmpty()) id = defaultBuiltinId(kind);
   }
+  if (id.isEmpty()) return Project{};
   return projectForTemplate(kind, id);
 }
 
@@ -507,6 +539,10 @@ void OperatorPage::addPreparedGraphic()
 {
   const QString kind = serviceType_->currentData().toString();
   Project project = projectForServiceKind(kind);
+  if (project.layers.isEmpty()) {
+    QMessageBox::information(this, "Plantillas", "No hay una plantilla disponible para este tipo. Selecciona o crea una plantilla primero.");
+    return;
+  }
 
   QString label = project.name;
   if (kind == "current") {
