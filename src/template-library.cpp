@@ -1,5 +1,6 @@
 #include "template-library.hpp"
 #include "graphics-renderer.hpp"
+#include "template-factory.hpp"
 
 #include <QDir>
 #include <QFile>
@@ -79,13 +80,28 @@ QVector<TemplateEntry> TemplateLibrary::entries()
 
 bool TemplateLibrary::save(const Project &project, const QString &name, QString *error)
 {
+  const bool bibleTemplate = project.usage == TemplateUsage::BibleText;
+  if (bibleTemplate) {
+    bool hasVerse = false;
+    bool hasReference = false;
+    for (const Layer &layer : project.layers) {
+      if (layer.name == "{{VERSICULO}}") hasVerse = true;
+      if (layer.name == "{{REFERENCIA}}") hasReference = true;
+    }
+    if (!hasVerse || !hasReference) {
+      if (error) *error = "La plantilla bíblica necesita una capa {{VERSICULO}} y una capa {{REFERENCIA}} antes de guardarse.";
+      return false;
+    }
+  }
+
   QJsonObject root;
   root["format"] = "WorshipGraphicsTemplate";
-  root["version"] = 2;
+  root["version"] = 3;
   root["name"] = name;
   root["canvasWidth"] = project.canvas.width();
   root["canvasHeight"] = project.canvas.height();
   root["usage"] = static_cast<int>(project.usage);
+  root["bibleReusable"] = bibleTemplate;
 
   QJsonArray layers;
   for (const Layer &l : project.layers) {
@@ -95,7 +111,17 @@ bool TemplateLibrary::save(const Project &project, const QString &name, QString 
     o["x"] = l.position.x(); o["y"] = l.position.y(); o["w"] = l.size.width(); o["h"] = l.size.height();
     o["opacity"] = l.opacity; o["rotation"] = l.rotationDeg; o["radius"] = l.cornerRadius;
     o["color"] = l.color.name(QColor::HexArgb); o["textured"] = l.textured;
-    o["text"] = l.text; o["fontFamily"] = l.fontFamily; o["fontSize"] = l.fontSize; o["minFontSize"] = l.minFontSize; o["bold"] = l.bold;
+
+    QString storedText = l.text;
+    if (bibleTemplate && l.name == "{{VERSICULO}}") {
+      o["binding"] = "verse";
+      storedText = "{{VERSICULO}}";
+    } else if (bibleTemplate && l.name == "{{REFERENCIA}}") {
+      o["binding"] = "reference";
+      storedText = "{{REFERENCIA}}";
+    }
+
+    o["text"] = storedText; o["fontFamily"] = l.fontFamily; o["fontSize"] = l.fontSize; o["minFontSize"] = l.minFontSize; o["bold"] = l.bold;
     o["autoFit"] = l.textAutoFit; o["wrap"] = l.textWrap; o["splitOverflow"] = l.splitOverflow; o["maxLines"] = l.maxLines;
     o["textHAlign"] = static_cast<int>(l.textHorizontalAlign);
     o["textVAlign"] = static_cast<int>(l.textVerticalAlign);
@@ -108,7 +134,8 @@ bool TemplateLibrary::save(const Project &project, const QString &name, QString 
   root["layers"] = layers;
 
   const QString base = libraryPath() + "/" + safeName(name);
-  QFile file(base + ".wgtpl");
+  const QString templatePath = base + ".wgtpl";
+  QFile file(templatePath);
   if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
     if (error) *error = "No se pudo guardar la plantilla.";
     return false;
@@ -119,6 +146,12 @@ bool TemplateLibrary::save(const Project &project, const QString &name, QString 
   GraphicsRenderer::render(project)
       .scaled(480, 270, Qt::KeepAspectRatio, Qt::SmoothTransformation)
       .save(base + ".png");
+
+  // Saving a valid Bible template makes it the active reusable Bible template.
+  // Every passage will clone this full project and replace only the two bound texts.
+  if (bibleTemplate)
+    setBibleDefaultTemplate(templatePath);
+
   return true;
 }
 
@@ -147,6 +180,9 @@ bool TemplateLibrary::load(const QString &filePath, Project *project, QString *e
     const auto o = value.toObject();
     Layer l;
     l.id = o.value("id").toString(); l.name = o.value("name").toString(); l.parentId = o.value("parentId").toString();
+    const QString binding = o.value("binding").toString();
+    if (binding == "verse") l.name = "{{VERSICULO}}";
+    else if (binding == "reference") l.name = "{{REFERENCIA}}";
     l.type = static_cast<LayerType>(o.value("type").toInt()); l.visible = o.value("visible").toBool(true); l.locked = o.value("locked").toBool(false);
     l.position = {o.value("x").toDouble(), o.value("y").toDouble()};
     l.size = {o.value("w").toDouble(400), o.value("h").toDouble(120)};
@@ -286,6 +322,54 @@ bool TemplateLibrary::isBibleTemplateId(const QString &templateId)
     if (layer.name == "{{REFERENCIA}}") reference = true;
   }
   return verse && reference;
+}
+
+bool TemplateLibrary::applyBibleFields(Project &project, const QString &verse, const QString &reference)
+{
+  bool foundVerse = false;
+  bool foundReference = false;
+
+  // Intentionally change ONLY layer.text. Geometry, font rules, alignment,
+  // animation, opacity, colors, images and every other template property stay intact.
+  for (Layer &layer : project.layers) {
+    if (layer.name == "{{VERSICULO}}") {
+      layer.text = verse;
+      foundVerse = true;
+    } else if (layer.name == "{{REFERENCIA}}") {
+      layer.text = reference;
+      foundReference = true;
+    }
+  }
+
+  if (foundVerse && foundReference) {
+    project.usage = TemplateUsage::BibleText;
+    project.name = "Versículo · " + reference;
+    return true;
+  }
+  return false;
+}
+
+Project TemplateLibrary::instantiateBibleTemplate(const QString &verse, const QString &reference, QString *error)
+{
+  const QString id = preferredBibleTemplate();
+  if (id.isEmpty()) {
+    if (error) *error = "No hay una plantilla bíblica disponible.";
+    return {};
+  }
+
+  Project project;
+  if (id == "builtin:scripture") {
+    project = TemplateFactory::scriptureLowerThird();
+  } else if (!load(id, &project, error)) {
+    return {};
+  }
+
+  if (!applyBibleFields(project, verse, reference)) {
+    if (error) *error = "La plantilla bíblica activa no contiene {{VERSICULO}} y {{REFERENCIA}}.";
+    return {};
+  }
+
+  return project;
 }
 
 void TemplateLibrary::setBibleDefaultTemplate(const QString &templateId)

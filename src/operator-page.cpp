@@ -39,27 +39,6 @@ Project builtinProject(const QString &id)
   return TemplateFactory::pastorLowerThird();
 }
 
-bool fillBibleFields(Project &project, const QString &verse, const QString &reference)
-{
-  bool foundVerse = false;
-  bool foundReference = false;
-  for (auto &layer : project.layers) {
-    if (layer.name == "{{VERSICULO}}") {
-      layer.text = verse;
-      foundVerse = true;
-    }
-    if (layer.name == "{{REFERENCIA}}") {
-      layer.text = reference;
-      foundReference = true;
-    }
-  }
-
-  if (foundVerse && foundReference) {
-    project.usage = TemplateUsage::BibleText;
-    project.name = "Versículo · " + reference;
-  }
-  return foundVerse && foundReference;
-}
 
 QPushButton *iconButton(QWidget *owner, QStyle::StandardPixmap icon, const QString &tip)
 {
@@ -554,12 +533,10 @@ void OperatorPage::handleBibleEnter()
 Project OperatorPage::projectForBiblePassage(const BiblePassage &passage) const
 {
   if (!passage.valid) return {};
-  const QString id = TemplateLibrary::preferredBibleTemplate();
-  Project project = id.isEmpty() ? Project{} : projectForTemplateId(id);
-
-  if (project.layers.isEmpty() || !fillBibleFields(project, passage.text, passage.reference))
+  QString error;
+  Project project = TemplateLibrary::instantiateBibleTemplate(passage.text, passage.reference, &error);
+  if (project.layers.isEmpty())
     project = TemplateFactory::scriptureLowerThird(passage.text, passage.reference);
-
   return project;
 }
 

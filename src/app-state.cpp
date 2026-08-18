@@ -1,6 +1,7 @@
 #include "app-state.hpp"
 #include "graphics-renderer.hpp"
 #include "template-factory.hpp"
+#include "template-library.hpp"
 
 #include <obs.h>
 
@@ -87,27 +88,9 @@ void AppState::applyBiblePassage(const QString &verse, const QString &reference)
 
 Project AppState::bibleProjectForPassage(const QString &verse, const QString &reference) const
 {
-  Project out = hasBibleTemplate_ ? bibleTemplateProject_ : TemplateFactory::scriptureLowerThird();
-  out.usage = TemplateUsage::BibleText;
-  out.name = "Versículo · " + reference;
-
-  bool foundVerse = false;
-  bool foundReference = false;
-  for (auto &layer : out.layers) {
-    if (layer.name == "{{VERSICULO}}") {
-      layer.text = verse;
-      foundVerse = true;
-    }
-    if (layer.name == "{{REFERENCIA}}") {
-      layer.text = reference;
-      foundReference = true;
-    }
-  }
-
-  if (!foundVerse || !foundReference) {
+  Project out = TemplateLibrary::instantiateBibleTemplate(verse, reference, nullptr);
+  if (out.layers.isEmpty())
     out = TemplateFactory::scriptureLowerThird(verse, reference);
-    out.usage = TemplateUsage::BibleText;
-  }
   return out;
 }
 

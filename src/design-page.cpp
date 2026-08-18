@@ -541,8 +541,16 @@ void DesignPage::saveTemplate()
   bool ok = false; const QString name = QInputDialog::getText(this, "Guardar plantilla", "Nombre:", QLineEdit::Normal, AppState::instance().project().name, &ok);
   if (!ok || name.trimmed().isEmpty()) return;
   QString error;
-  if (!TemplateLibrary::save(AppState::instance().project(), name, &error)) QMessageBox::warning(this, "Worship Graphics", error);
-  else { refreshTemplateLibrary(); QMessageBox::information(this, "Worship Graphics", "Plantilla guardada con miniatura."); }
+  const bool bibleTemplate = AppState::instance().project().usage == TemplateUsage::BibleText;
+  if (!TemplateLibrary::save(AppState::instance().project(), name, &error)) {
+    QMessageBox::warning(this, "Worship Graphics", error);
+  } else {
+    refreshTemplateLibrary();
+    QMessageBox::information(this, "Worship Graphics",
+                             bibleTemplate
+                                 ? "Plantilla bíblica guardada y activada. Todos los textos bíblicos usarán este mismo diseño y sus límites; solo cambiarán {{VERSICULO}} y {{REFERENCIA}}."
+                                 : "Plantilla guardada con miniatura.");
+  }
 }
 
 void DesignPage::rebuildLayerList()

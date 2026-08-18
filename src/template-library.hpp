@@ -26,6 +26,8 @@ public:
   static QString displayNameForId(const QString &templateId);
   static bool isValidTemplateId(const QString &templateId);
   static bool isBibleTemplateId(const QString &templateId);
+  static bool applyBibleFields(Project &project, const QString &verse, const QString &reference);
+  static Project instantiateBibleTemplate(const QString &verse, const QString &reference, QString *error = nullptr);
   static void setBibleDefaultTemplate(const QString &templateId);
   static QString preferredBibleTemplate();
 
