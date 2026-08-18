@@ -713,9 +713,11 @@ void OperatorPage::addBibleToService()
       ? bibleTemplateChoice_->currentData().toString()
       : defaultBuiltinId("scripture");
   Project project = projectForTemplate("scripture", id);
-  const QString templateName = bibleTemplateChoice_ ? bibleTemplateChoice_->currentText() : QString("Versículo");
+  QString templateName = bibleTemplateChoice_ ? bibleTemplateChoice_->currentText() : QString("Versículo");
+  templateName.replace("Integrada · ", "");
+  templateName.replace("Mi plantilla · ", "");
 
-  appendPrepared("Versículo · " + currentPassage_.reference + " · " + templateName.replace("Integrada · ", "").replace("Mi plantilla · ", ""),
+  appendPrepared("Versículo · " + currentPassage_.reference + " · " + templateName,
                  "scripture", project, true);
 
   tabs_->setCurrentIndex(0);

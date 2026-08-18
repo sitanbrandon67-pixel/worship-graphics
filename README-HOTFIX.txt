@@ -1,17 +1,19 @@
-Worship Graphics v0.3.1 OUTPUT HOTFIX
+WORSHIP GRAPHICS v0.3.9 - COMPILE HOTFIX
 
-Replace these files in the repository:
-- src/output-source.hpp
-- src/output-source.cpp
-- src/plugin-main.cpp
+Replace only:
+- src/operator-page.cpp
 - buildspec.json
 
-What this fixes:
-- Worship Graphics Output is now ensured in the active OBS Program scene.
-- In Studio Mode it is also ensured in the current Preview scene.
-- The overlay is re-attached when Program/Preview scenes change.
-- The overlay is forced visible, locked and moved to the top of the scene.
-- Existing output sources are reused instead of causing an early return.
+Fix:
+v0.3.8 declared templateName as const QString and then called QString::replace(),
+which is a mutating method. This causes MSVC compilation to fail.
 
-After replacing the files, commit to main and let GitHub Actions build
-WorshipGraphics-Setup-0.3.1.exe.
+No other Worship Graphics functionality is changed.
+Template routing, deletion, responsive UI, Smart Text, Timeline and OBS output
+remain as in v0.3.8.
+
+Commit suggestion:
+Fix v0.3.8 QString compile error
+
+Expected installer:
+WorshipGraphics-Setup-0.3.9.exe
