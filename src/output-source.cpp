@@ -49,6 +49,19 @@ static void ensureOutputInScene(obs_source_t *sceneSource, obs_source_t *output)
   obs_sceneitem_set_visible(item, true);
   obs_sceneitem_set_locked(item, true);
   obs_sceneitem_set_order(item, OBS_ORDER_MOVE_TOP);
+
+  vec2 pos;
+  vec2_set(&pos, 0.0f, 0.0f);
+  obs_sceneitem_set_pos(item, &pos);
+
+  vec2 scale;
+  vec2_set(&scale, 1.0f, 1.0f);
+  obs_sceneitem_set_scale(item, &scale);
+
+  obs_sceneitem_crop crop = {};
+  obs_sceneitem_set_crop(item, &crop);
+  obs_sceneitem_set_rot(item, 0.0f);
+  obs_sceneitem_set_alignment(item, OBS_ALIGN_LEFT | OBS_ALIGN_TOP);
 }
 
 void ensureOutputInRelevantScenes()
@@ -79,17 +92,20 @@ void ensureOutputInRelevantScenes()
 
 static void *sourceCreate(obs_data_t *, obs_source_t *)
 {
+  blog(LOG_INFO, "[Worship Graphics] Output source created");
   return new OutputSourceData();
 }
 
 static void sourceDestroy(void *data)
 {
   auto *ctx = static_cast<OutputSourceData *>(data);
+
   if (ctx->texture) {
     obs_enter_graphics();
     gs_texture_destroy(ctx->texture);
     obs_leave_graphics();
   }
+
   delete ctx;
 }
 
@@ -108,18 +124,25 @@ static void uploadFrame(OutputSourceData *ctx, const QImage &source)
   if (source.isNull())
     return;
 
-  QImage frame = source.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
+  const QImage frame = source.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
+
   ctx->width = static_cast<uint32_t>(frame.width());
   ctx->height = static_cast<uint32_t>(frame.height());
 
   if (!ctx->texture ||
       gs_texture_get_width(ctx->texture) != ctx->width ||
       gs_texture_get_height(ctx->texture) != ctx->height) {
-    if (ctx->texture)
+
+    if (ctx->texture) {
       gs_texture_destroy(ctx->texture);
+      ctx->texture = nullptr;
+    }
 
     const uint8_t *bits = frame.constBits();
     ctx->texture = gs_texture_create(ctx->width, ctx->height, GS_RGBA, 1, &bits, GS_DYNAMIC);
+
+    if (!ctx->texture)
+      blog(LOG_ERROR, "[Worship Graphics] Failed to create output texture");
   } else {
     gs_texture_set_image(ctx->texture,
                          frame.constBits(),
@@ -128,26 +151,36 @@ static void uploadFrame(OutputSourceData *ctx, const QImage &source)
   }
 }
 
-static void sourceRender(void *data, gs_effect_t *)
+static void sourceRender(void *data, gs_effect_t *effect)
 {
   auto *ctx = static_cast<OutputSourceData *>(data);
 
   uploadFrame(ctx, AppState::instance().programFrame());
-  if (!ctx->texture)
+
+  if (!ctx->texture || !effect)
     return;
 
-  gs_effect_t *effect = obs_get_base_effect(OBS_EFFECT_DEFAULT);
-  gs_eparam_t *image = gs_effect_get_param_by_name(effect, "image");
-  gs_effect_set_texture(image, ctx->texture);
+  const bool previousSrgb = gs_framebuffer_srgb_enabled();
+  gs_enable_framebuffer_srgb(true);
 
-  while (gs_effect_loop(effect, "Draw"))
+  gs_blend_state_push();
+  gs_blend_function(GS_BLEND_ONE, GS_BLEND_INVSRCALPHA);
+
+  gs_eparam_t *image = gs_effect_get_param_by_name(effect, "image");
+  if (image) {
+    gs_effect_set_texture_srgb(image, ctx->texture);
     gs_draw_sprite(ctx->texture, 0, ctx->width, ctx->height);
+  }
+
+  gs_blend_state_pop();
+  gs_enable_framebuffer_srgb(previousSrgb);
 }
 
 obs_source_info worshipGraphicsSourceInfo = {
   .id = kOutputSourceId,
   .type = OBS_SOURCE_TYPE_INPUT,
-  .output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_SRGB | OBS_SOURCE_CAP_DONT_SHOW_PROPERTIES,
+  .output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_SRGB |
+                  OBS_SOURCE_CAP_DONT_SHOW_PROPERTIES,
   .get_name = sourceName,
   .create = sourceCreate,
   .destroy = sourceDestroy,
