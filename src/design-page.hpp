@@ -34,6 +34,7 @@ private slots:
   void groupSelection();
   void ungroupCurrent();
   void applyStagger();
+  void createBlankCanvas();
   void importPsd();
   void saveTemplate();
   void loadSelectedTemplate();

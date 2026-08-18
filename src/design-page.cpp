@@ -10,6 +10,8 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
@@ -22,6 +24,8 @@
 #include <QInputDialog>
 #include <QItemSelectionModel>
 #include <QLabel>
+#include <QPainter>
+#include <QPainterPath>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
@@ -101,21 +105,185 @@ static QIcon projectIcon(const Project &project)
 }
 
 
-static QPushButton *iconButton(QWidget *owner, QStyle::StandardPixmap icon, const QString &tip)
+
+enum class ToolIcon {
+  NewCanvas,
+  Save,
+  Open,
+  Star,
+  Delete,
+  Restore,
+  ImportPsd,
+  AddText,
+  AddShape,
+  AddImage,
+  Duplicate,
+  Stagger,
+  Up,
+  Down,
+  Visible,
+  Lock,
+  Group,
+  Ungroup,
+  AlignLeft,
+  AlignCenterH,
+  AlignRight,
+  AlignTop,
+  AlignCenterV,
+  AlignBottom,
+};
+
+static QIcon makeToolIcon(ToolIcon kind)
+{
+  QPixmap pm(20, 20);
+  pm.fill(Qt::transparent);
+
+  QPainter p(&pm);
+  p.setRenderHint(QPainter::Antialiasing, true);
+  QPen pen(QColor("#F3F4F8"));
+  pen.setWidthF(1.8);
+  pen.setCapStyle(Qt::RoundCap);
+  pen.setJoinStyle(Qt::RoundJoin);
+  p.setPen(pen);
+  p.setBrush(Qt::NoBrush);
+
+  const QRectF r(2.0, 2.0, 16.0, 16.0);
+  auto hline = [&](qreal y, qreal x1, qreal x2) { p.drawLine(QPointF(x1, y), QPointF(x2, y)); };
+  auto vline = [&](qreal x, qreal y1, qreal y2) { p.drawLine(QPointF(x, y1), QPointF(x, y2)); };
+
+  switch (kind) {
+  case ToolIcon::NewCanvas:
+    p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 2.5, 2.5);
+    hline(10, 6, 14); vline(10, 6, 14);
+    break;
+  case ToolIcon::Save:
+    p.drawRoundedRect(r.adjusted(1, 1, -1, -1), 2.2, 2.2);
+    hline(6.5, 6, 14);
+    p.drawRect(QRectF(6, 10, 8, 4));
+    break;
+  case ToolIcon::Open:
+    p.drawRoundedRect(QRectF(3, 6, 14, 10), 2, 2);
+    p.drawLine(QPointF(3.5, 8), QPointF(8, 8));
+    p.drawLine(QPointF(8, 8), QPointF(9.5, 6));
+    p.drawLine(QPointF(9.5, 6), QPointF(16.5, 6));
+    break;
+  case ToolIcon::Star: {
+    QPainterPath path;
+    path.moveTo(10, 3.5); path.lineTo(12.0, 7.6); path.lineTo(16.5, 8.2);
+    path.lineTo(13.2, 11.4); path.lineTo(14.0, 16.0); path.lineTo(10, 13.9);
+    path.lineTo(6.0, 16.0); path.lineTo(6.8, 11.4); path.lineTo(3.5, 8.2);
+    path.lineTo(8.0, 7.6); path.closeSubpath();
+    p.drawPath(path);
+    break;
+  }
+  case ToolIcon::Delete:
+    p.drawRoundedRect(QRectF(6, 6.5, 8, 9), 1.5, 1.5);
+    hline(5, 5.2, 14.8);
+    hline(6.5, 7.5, 12.5);
+    vline(8.7, 8.2, 13.5); vline(11.3, 8.2, 13.5);
+    break;
+  case ToolIcon::Restore:
+    p.drawArc(QRectF(4, 4, 12, 12), 40 * 16, 260 * 16);
+    p.drawLine(QPointF(13.8, 3.7), QPointF(16, 5.5));
+    p.drawLine(QPointF(13.8, 3.7), QPointF(13.5, 6.5));
+    break;
+  case ToolIcon::ImportPsd:
+    p.drawRoundedRect(QRectF(3.5, 3.5, 13, 13), 2.2, 2.2);
+    hline(6.2, 6.5, 13.5); hline(9.9, 6.5, 13.5); hline(13.6, 6.5, 12.0);
+    vline(6.2, 9.9, 13.5);
+    break;
+  case ToolIcon::AddText:
+    hline(5.5, 4, 16); vline(10, 5.5, 16);
+    hline(16, 7, 13);
+    break;
+  case ToolIcon::AddShape:
+    p.drawRoundedRect(QRectF(4.5, 5.5, 11, 9), 2, 2);
+    hline(10, 7.5, 12.5); vline(10, 7.5, 12.5);
+    break;
+  case ToolIcon::AddImage:
+    p.drawRoundedRect(QRectF(3.5, 4.5, 13, 11), 2, 2);
+    p.drawEllipse(QPointF(7, 8), 1.2, 1.2);
+    p.drawLine(QPointF(5.2, 13.5), QPointF(9.1, 9.5));
+    p.drawLine(QPointF(9.1, 9.5), QPointF(12.4, 12.8));
+    p.drawLine(QPointF(11.8, 6.5), QPointF(16.4, 6.5));
+    p.drawLine(QPointF(14.1, 4.2), QPointF(14.1, 8.8));
+    break;
+  case ToolIcon::Duplicate:
+    p.drawRoundedRect(QRectF(5, 5, 8.5, 8.5), 1.6, 1.6);
+    p.drawRoundedRect(QRectF(8.5, 8.5, 6.5, 6.5), 1.4, 1.4);
+    break;
+  case ToolIcon::Stagger:
+    p.drawLine(QPointF(5, 14), QPointF(5, 8));
+    p.drawLine(QPointF(10, 14), QPointF(10, 6));
+    p.drawLine(QPointF(15, 14), QPointF(15, 4));
+    break;
+  case ToolIcon::Up:
+    p.drawLine(QPointF(10, 4), QPointF(10, 16));
+    p.drawLine(QPointF(6.5, 7.5), QPointF(10, 4));
+    p.drawLine(QPointF(13.5, 7.5), QPointF(10, 4));
+    break;
+  case ToolIcon::Down:
+    p.drawLine(QPointF(10, 4), QPointF(10, 16));
+    p.drawLine(QPointF(6.5, 12.5), QPointF(10, 16));
+    p.drawLine(QPointF(13.5, 12.5), QPointF(10, 16));
+    break;
+  case ToolIcon::Visible:
+    p.drawPath(QPainterPath());
+    p.drawLine(QPointF(3.5, 10), QPointF(6.2, 7.4));
+    p.drawLine(QPointF(6.2, 7.4), QPointF(10, 6.1));
+    p.drawLine(QPointF(10, 6.1), QPointF(13.8, 7.4));
+    p.drawLine(QPointF(13.8, 7.4), QPointF(16.5, 10));
+    p.drawLine(QPointF(16.5, 10), QPointF(13.8, 12.6));
+    p.drawLine(QPointF(13.8, 12.6), QPointF(10, 13.9));
+    p.drawLine(QPointF(10, 13.9), QPointF(6.2, 12.6));
+    p.drawLine(QPointF(6.2, 12.6), QPointF(3.5, 10));
+    p.drawEllipse(QPointF(10, 10), 2.1, 2.1);
+    break;
+  case ToolIcon::Lock:
+    p.drawRoundedRect(QRectF(5.2, 9, 9.6, 7), 1.4, 1.4);
+    p.drawArc(QRectF(6.4, 4.2, 7.2, 7.2), 20 * 16, 140 * 16);
+    break;
+  case ToolIcon::Group:
+    p.drawRoundedRect(QRectF(3.5, 5.5, 5.5, 5.5), 1.2, 1.2);
+    p.drawRoundedRect(QRectF(11, 8.5, 5.5, 5.5), 1.2, 1.2);
+    p.drawLine(QPointF(9, 8.2), QPointF(11, 8.2));
+    p.drawLine(QPointF(9, 10), QPointF(11, 10));
+    break;
+  case ToolIcon::Ungroup:
+    p.drawRoundedRect(QRectF(3.5, 5.5, 5.5, 5.5), 1.2, 1.2);
+    p.drawRoundedRect(QRectF(11, 8.5, 5.5, 5.5), 1.2, 1.2);
+    p.drawLine(QPointF(8.7, 9.2), QPointF(11.3, 6.6));
+    break;
+  case ToolIcon::AlignLeft:
+    vline(4.5, 4, 16); hline(7, 4.5, 14.5); hline(13, 4.5, 11.5);
+    break;
+  case ToolIcon::AlignCenterH:
+    vline(10, 4, 16); hline(7, 5.5, 14.5); hline(13, 7.0, 13.0);
+    break;
+  case ToolIcon::AlignRight:
+    vline(15.5, 4, 16); hline(7, 5.5, 15.5); hline(13, 8.5, 15.5);
+    break;
+  case ToolIcon::AlignTop:
+    hline(4.5, 4, 16); vline(7, 4.5, 14.5); vline(13, 4.5, 11.5);
+    break;
+  case ToolIcon::AlignCenterV:
+    hline(10, 4, 16); vline(7, 5.5, 14.5); vline(13, 7, 13.0);
+    break;
+  case ToolIcon::AlignBottom:
+    hline(15.5, 4, 16); vline(7, 5.5, 15.5); vline(13, 8.5, 15.5);
+    break;
+  }
+  return QIcon(pm);
+}
+
+static QPushButton *toolButton(ToolIcon icon, const QString &tip)
 {
   auto *button = new QPushButton();
   button->setObjectName("wgIconButton");
-  button->setIcon(owner->style()->standardIcon(icon));
-  button->setIconSize({15, 15});
   button->setToolTip(tip);
-  return button;
-}
-
-static QPushButton *glyphButton(const QString &glyph, const QString &tip)
-{
-  auto *button = new QPushButton(glyph);
-  button->setObjectName("wgIconButton");
-  button->setToolTip(tip);
+  button->setIcon(makeToolIcon(icon));
+  button->setIconSize({18, 18});
+  button->setFixedSize(32, 30);
   return button;
 }
 
@@ -140,12 +308,12 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   auto *bibleDefaultLabel = new QLabel();
   bibleDefaultLabel->setObjectName("wgSubtle");
 
-  auto *save = iconButton(this, QStyle::SP_DialogSaveButton, "Guardar el diseño actual como plantilla");
-  auto *openTemplate = iconButton(this, QStyle::SP_DialogOpenButton, "Abrir la plantilla seleccionada en Diseño");
-  auto *bibleDefaultButton = glyphButton("★", "Usar esta plantilla como la plantilla bíblica predeterminada");
-  auto *deleteTemplate = iconButton(this, QStyle::SP_TrashIcon, "Eliminar plantilla personal u ocultar una integrada");
+  auto *save = toolButton(ToolIcon::Save, "Guardar el diseño actual como plantilla");
+  auto *openTemplate = toolButton(ToolIcon::Open, "Abrir la plantilla seleccionada en Diseño");
+  auto *bibleDefaultButton = toolButton(ToolIcon::Star, "Usar esta plantilla como la plantilla bíblica predeterminada");
+  auto *deleteTemplate = toolButton(ToolIcon::Delete, "Eliminar plantilla personal u ocultar una integrada");
   deleteTemplate->setObjectName("wgIconButton");
-  auto *restoreBuiltins = iconButton(this, QStyle::SP_BrowserReload, "Restaurar plantillas integradas ocultas");
+  auto *restoreBuiltins = toolButton(ToolIcon::Restore, "Restaurar plantillas integradas ocultas");
 
   libraryTitle->addWidget(title);
   libraryTitle->addSpacing(8);
@@ -178,14 +346,16 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
 
   auto *toolbar = new QHBoxLayout();
   toolbar->setSpacing(4);
-  auto *importPsd = glyphButton("Ps", "Importar PSD/PSB");
-  auto *addText = glyphButton("T", "Agregar capa de texto");
-  auto *addShape = glyphButton("▭", "Agregar forma");
-  auto *addImage = iconButton(this, QStyle::SP_FileIcon, "Agregar imagen");
-  auto *duplicate = glyphButton("⧉", "Duplicar capa");
-  auto *remove = iconButton(this, QStyle::SP_TrashIcon, "Eliminar capa");
+  auto *newCanvas = toolButton(ToolIcon::NewCanvas, "Crear un canvas nuevo desde cero");
+  auto *importPsd = toolButton(ToolIcon::ImportPsd, "Importar PSD/PSB");
+  auto *addText = toolButton(ToolIcon::AddText, "Agregar capa de texto");
+  auto *addShape = toolButton(ToolIcon::AddShape, "Agregar forma");
+  auto *addImage = toolButton(ToolIcon::AddImage, "Agregar imagen");
+  auto *duplicate = toolButton(ToolIcon::Duplicate, "Duplicar capa");
+  auto *remove = toolButton(ToolIcon::Delete, "Eliminar capa");
   remove->setObjectName("wgIconButton");
-  auto *stagger = glyphButton("⇥", "Escalonar animaciones 80 ms");
+  auto *stagger = toolButton(ToolIcon::Stagger, "Escalonar animaciones 80 ms");
+  toolbar->addWidget(newCanvas);
   toolbar->addWidget(importPsd);
   toolbar->addWidget(addText);
   toolbar->addWidget(addShape);
@@ -209,12 +379,12 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   layersLayout->addWidget(layers_, 1);
   auto *layerActions1 = new QHBoxLayout();
   layerActions1->setSpacing(4);
-  auto *up = iconButton(this, QStyle::SP_ArrowUp, "Subir capa");
-  auto *down = iconButton(this, QStyle::SP_ArrowDown, "Bajar capa");
-  auto *visible = glyphButton("◉", "Mostrar / ocultar capa");
-  auto *lock = glyphButton("L", "Bloquear / desbloquear capa");
-  auto *group = glyphButton("G", "Agrupar capas seleccionadas");
-  auto *ungroup = glyphButton("U", "Desagrupar");
+  auto *up = toolButton(ToolIcon::Up, "Subir capa");
+  auto *down = toolButton(ToolIcon::Down, "Bajar capa");
+  auto *visible = toolButton(ToolIcon::Visible, "Mostrar / ocultar capa");
+  auto *lock = toolButton(ToolIcon::Lock, "Bloquear / desbloquear capa");
+  auto *group = toolButton(ToolIcon::Group, "Agrupar capas seleccionadas");
+  auto *ungroup = toolButton(ToolIcon::Ungroup, "Desagrupar");
   layerActions1->addWidget(up); layerActions1->addWidget(down); layerActions1->addWidget(visible); layerActions1->addWidget(lock); layerActions1->addWidget(group); layerActions1->addWidget(ungroup);
   layerActions1->addStretch();
   layersLayout->addLayout(layerActions1);
@@ -276,12 +446,12 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   auto *alignTitle = new QLabel("ALINEAR CAPA EN CANVAS"); alignTitle->setObjectName("wgSectionTitle"); propertiesLayout->addWidget(alignTitle);
   auto *alignRow1 = new QHBoxLayout();
   alignRow1->setSpacing(4);
-  auto *alignLeft = glyphButton("←|", "Alinear capa a la izquierda");
-  auto *alignCenterH = glyphButton("↔", "Centrar capa horizontalmente");
-  auto *alignRight = glyphButton("|→", "Alinear capa a la derecha");
-  auto *alignTop = glyphButton("↑", "Alinear capa arriba");
-  auto *alignCenterV = glyphButton("↕", "Centrar capa verticalmente");
-  auto *alignBottom = glyphButton("↓", "Alinear capa abajo");
+  auto *alignLeft = toolButton(ToolIcon::AlignLeft, "Alinear capa a la izquierda");
+  auto *alignCenterH = toolButton(ToolIcon::AlignCenterH, "Centrar capa horizontalmente");
+  auto *alignRight = toolButton(ToolIcon::AlignRight, "Alinear capa a la derecha");
+  auto *alignTop = toolButton(ToolIcon::AlignTop, "Alinear capa arriba");
+  auto *alignCenterV = toolButton(ToolIcon::AlignCenterV, "Centrar capa verticalmente");
+  auto *alignBottom = toolButton(ToolIcon::AlignBottom, "Alinear capa abajo");
   alignRow1->addWidget(alignLeft); alignRow1->addWidget(alignCenterH); alignRow1->addWidget(alignRight);
   alignRow1->addWidget(alignTop); alignRow1->addWidget(alignCenterV); alignRow1->addWidget(alignBottom); alignRow1->addStretch();
   propertiesLayout->addLayout(alignRow1);
@@ -357,6 +527,7 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   connect(group, &QPushButton::clicked, this, &DesignPage::groupSelection);
   connect(ungroup, &QPushButton::clicked, this, &DesignPage::ungroupCurrent);
   connect(stagger, &QPushButton::clicked, this, &DesignPage::applyStagger);
+  connect(newCanvas, &QPushButton::clicked, this, &DesignPage::createBlankCanvas);
   connect(importPsd, &QPushButton::clicked, this, &DesignPage::importPsd);
   connect(save, &QPushButton::clicked, this, &DesignPage::saveTemplate);
   connect(templates_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *) { loadSelectedTemplate(); });
@@ -663,6 +834,85 @@ void DesignPage::groupSelection()
 }
 void DesignPage::ungroupCurrent() { AppState::instance().ungroupLayer(currentRow_); }
 void DesignPage::applyStagger() { AppState::instance().staggerLayers(80); timeline_->refreshCurrentFrame(); selectLayer(currentRow_); }
+
+
+void DesignPage::createBlankCanvas()
+{
+  QDialog dialog(this);
+  dialog.setWindowTitle("Nuevo canvas");
+  auto *layout = new QVBoxLayout(&dialog);
+  layout->setContentsMargins(14, 14, 14, 14);
+  layout->setSpacing(10);
+
+  auto *desc = new QLabel("Crea un lienzo vacío desde cero. El tamaño será el tamaño lógico real de transmisión; el panel de edición solo lo mostrará escalado.");
+  desc->setWordWrap(true);
+  desc->setObjectName("wgSubtle");
+  layout->addWidget(desc);
+
+  auto *form = new QFormLayout();
+  auto *name = new QLineEdit("Nuevo diseño");
+  auto *preset = new QComboBox();
+  preset->addItem("16:9 · Full HD · 1920×1080", QSize(1920, 1080));
+  preset->addItem("16:9 · HD · 1280×720", QSize(1280, 720));
+  preset->addItem("4K UHD · 3840×2160", QSize(3840, 2160));
+  preset->addItem("Vertical · 1080×1920", QSize(1080, 1920));
+  preset->addItem("Cuadrado · 1080×1080", QSize(1080, 1080));
+  preset->addItem("Personalizado", QSize());
+
+  auto *width = new QSpinBox();
+  width->setRange(16, 8192);
+  width->setValue(1920);
+  auto *height = new QSpinBox();
+  height->setRange(16, 8192);
+  height->setValue(1080);
+
+  auto syncPreset = [preset, width, height]() {
+    const QSize size = preset->currentData().toSize();
+    const bool custom = !size.isValid();
+    width->setEnabled(custom);
+    height->setEnabled(custom);
+    if (!custom) {
+      width->setValue(size.width());
+      height->setValue(size.height());
+    }
+  };
+  QObject::connect(preset, qOverload<int>(&QComboBox::currentIndexChanged), &dialog, syncPreset);
+  syncPreset();
+
+  form->addRow("Nombre", name);
+  form->addRow("Formato", preset);
+  form->addRow("Ancho", width);
+  form->addRow("Alto", height);
+  layout->addLayout(form);
+
+  auto *hint = new QLabel("Sugerencia: para transmisión estándar de iglesia en OBS normalmente usarás 1920×1080.");
+  hint->setObjectName("wgSubtle");
+  hint->setWordWrap(true);
+  layout->addWidget(hint);
+
+  auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+  buttons->button(QDialogButtonBox::Ok)->setText("Crear canvas");
+  buttons->button(QDialogButtonBox::Cancel)->setText("Cancelar");
+  QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+  QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+  layout->addWidget(buttons);
+
+  if (dialog.exec() != QDialog::Accepted)
+    return;
+
+  Project project;
+  project.name = name->text().trimmed().isEmpty() ? QString("Nuevo diseño") : name->text().trimmed();
+  project.canvas = QSize(width->value(), height->value());
+  project.layers.clear();
+  project.usage = TemplateUsage::Generic;
+
+  AppState::instance().loadProject(project);
+  currentRow_ = -1;
+  rebuildLayerList();
+  timeline_->setCurrentTimeMs(0);
+  timeline_->refreshCurrentFrame();
+  refreshCanvas();
+}
 
 void DesignPage::importPsd()
 {
