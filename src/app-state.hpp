@@ -56,8 +56,15 @@ private:
   AppState();
   void renderProgramAnimation(qreal transitionProgress, bool entering);
   int transitionDuration(bool entering) const;
+  int transitionDuration(const Project &project, bool entering) const;
 
+  // project_ is the graphic currently being prepared/edited.
   Project project_;
+
+  // programProject_ is a snapshot of the graphic that is actually on-air.
+  // This keeps PREPARED and PROGRAM independent.
+  Project programProject_;
+
   mutable QReadWriteLock frameLock_;
   QImage previewFrame_;
   QImage programFrame_;

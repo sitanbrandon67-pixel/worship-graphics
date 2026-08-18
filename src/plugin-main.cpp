@@ -26,8 +26,6 @@ static void frontendEvent(enum obs_frontend_event event, void *)
   case OBS_FRONTEND_EVENT_SCENE_CHANGED:
   case OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED:
   case OBS_FRONTEND_EVENT_STUDIO_MODE_ENABLED:
-    // Keep the transparent Worship Graphics overlay attached to whichever
-    // scenes OBS is currently using for Program and Preview.
     wg::ensureOutputInRelevantScenes();
     break;
   default:
@@ -48,9 +46,6 @@ bool obs_module_load(void)
   }
 
   obs_frontend_add_event_callback(frontendEvent, nullptr);
-
-  // Also try immediately. FINISHED_LOADING will repeat the check later and
-  // is harmless because ensureOutputInRelevantScenes does not duplicate items.
   wg::ensureOutputInRelevantScenes();
 
   blog(LOG_INFO, "[Worship Graphics] Loaded v%s", WG_VERSION);
