@@ -1,0 +1,2 @@
+Development foundation prepared for the Worship Graphics project.
+Before public distribution, choose and apply the final project license and verify compatibility with OBS Studio/plugin dependencies and any bundled third-party libraries/data.

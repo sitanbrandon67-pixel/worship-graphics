@@ -1,0 +1,56 @@
+name: Build Worship Graphics Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Worship Graphics
+        uses: actions/checkout@v4
+
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis -y --no-progress
+
+      - name: Download official OBS plugin build infrastructure
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/obsproject/obs-plugintemplate/archive/refs/heads/master.zip'
+          $zip = Join-Path $env:RUNNER_TEMP 'obs-plugintemplate.zip'
+          $dst = Join-Path $env:RUNNER_TEMP 'obs-plugintemplate'
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dst -Force
+          $template = Get-ChildItem $dst -Directory | Select-Object -First 1
+          Copy-Item (Join-Path $template.FullName 'cmake') -Destination . -Recurse -Force
+          New-Item -ItemType Directory -Path '.github/scripts' -Force | Out-Null
+          Copy-Item (Join-Path $template.FullName '.github/scripts/*') -Destination '.github/scripts' -Recurse -Force
+
+      - name: Configure and build with MSVC
+        shell: pwsh
+        env:
+          CI: true
+        run: |
+          .github/scripts/Build-Windows.ps1 -Target x64 -Configuration Release
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          cpack --config build_x64/CPackConfig.cmake -C Release -G NSIS
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+          Get-ChildItem build_x64 -Filter '*.exe' -Recurse | Copy-Item -Destination artifacts
+          if (Test-Path 'release/Release') {
+            Compress-Archive -Path 'release/Release/*' -DestinationPath 'artifacts/WorshipGraphics-Plugin-Windows.zip' -Force
+          }
+
+      - name: Upload installer and plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: WorshipGraphics-Windows
+          path: artifacts/*
+          if-no-files-found: error
