@@ -4,9 +4,11 @@
 #include "graphics-renderer.hpp"
 #include "template-factory.hpp"
 #include "template-library.hpp"
+#include "psd-importer.hpp"
 #include "theme.hpp"
 #include "timeline-widget.hpp"
 
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -355,7 +357,7 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   connect(group, &QPushButton::clicked, this, &DesignPage::groupSelection);
   connect(ungroup, &QPushButton::clicked, this, &DesignPage::ungroupCurrent);
   connect(stagger, &QPushButton::clicked, this, &DesignPage::applyStagger);
-  connect(importPsd, &QPushButton::clicked, this, &DesignPage::importPsdPlaceholder);
+  connect(importPsd, &QPushButton::clicked, this, &DesignPage::importPsd);
   connect(save, &QPushButton::clicked, this, &DesignPage::saveTemplate);
   connect(templates_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *) { loadSelectedTemplate(); });
 
@@ -662,10 +664,52 @@ void DesignPage::groupSelection()
 void DesignPage::ungroupCurrent() { AppState::instance().ungroupLayer(currentRow_); }
 void DesignPage::applyStagger() { AppState::instance().staggerLayers(80); timeline_->refreshCurrentFrame(); selectLayer(currentRow_); }
 
-void DesignPage::importPsdPlaceholder()
+void DesignPage::importPsd()
 {
-  const QString file = QFileDialog::getOpenFileName(this, "Importar diseño de Photoshop", {}, "Photoshop (*.psd *.psb)"); if (file.isEmpty()) return;
-  QMessageBox::information(this, "Importador PSD", "PSD seleccionado. El parser de capas PSD/PSB sigue siendo el siguiente módulo del motor; esta versión ya tiene grupos, imágenes, biblioteca y un Timeline editable para recibir esas capas sin rehacer el editor.");
+  const QString file = QFileDialog::getOpenFileName(
+      this,
+      "Importar diseño de Photoshop",
+      {},
+      "Photoshop (*.psd *.psb)");
+
+  if (file.isEmpty())
+    return;
+
+  QApplication::setOverrideCursor(Qt::WaitCursor);
+  const PsdImportResult result = PsdImporter::importFile(file);
+  QApplication::restoreOverrideCursor();
+
+  if (!result.ok) {
+    QMessageBox::critical(
+        this,
+        "Importador PSD",
+        "No se pudo importar el archivo.\n\n" + result.error);
+    return;
+  }
+
+  AppState::instance().loadProject(result.project);
+  currentRow_ = -1;
+  rebuildLayerList();
+  timeline_->setCurrentTimeMs(0);
+  timeline_->refreshCurrentFrame();
+
+  QString message =
+      QString("PSD importado correctamente.\n\n"
+              "Canvas: %1×%2\n"
+              "Textos editables: %3\n"
+              "Capas de imagen: %4\n"
+              "Grupos: %5")
+          .arg(result.project.canvas.width())
+          .arg(result.project.canvas.height())
+          .arg(result.textLayers)
+          .arg(result.imageLayers)
+          .arg(result.groupLayers);
+
+  if (!result.warnings.isEmpty()) {
+    message += "\n\nAvisos:\n• " + result.warnings.join("\n• ");
+  }
+
+  QMessageBox::information(this, "Importador PSD", message);
 }
 
 bool DesignPage::currentLayerIsText() const

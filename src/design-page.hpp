@@ -34,7 +34,7 @@ private slots:
   void groupSelection();
   void ungroupCurrent();
   void applyStagger();
-  void importPsdPlaceholder();
+  void importPsd();
   void saveTemplate();
   void loadSelectedTemplate();
   void markBibleTemplate(bool checked);
