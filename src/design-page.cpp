@@ -173,7 +173,7 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   connect(doubleTime, &QPushButton::clicked, this, [this] { AppState::instance().scaleTimeline(2.0, timeline_->isEntering()); timeline_->refreshCurrentFrame(); selectLayer(currentRow_); });
   connect(timeline_, &TimelineWidget::currentTimeChanged, this, [timeReadout](int ms) { timeReadout->setText(QString::number(ms / 1000.0, 'f', 2) + " s"); });
   connect(timeline_, &TimelineWidget::playbackStateChanged, this, [play](bool playing) { play->setText(playing ? "❚❚ PAUSA" : "▶ REPRODUCIR"); });
-  connect(timeline_, &TimelineWidget::layerSelected, layers_, &QListWidget::setCurrentRow);
+  connect(timeline_, &TimelineWidget::layerSelected, this, [this](int row) { layers_->setCurrentRow(row); });
   connect(timeline_, &TimelineWidget::timingEdited, this, [this](int row) { if (row == currentRow_) selectLayer(row); });
 
   refreshTemplateLibrary(); rebuildLayerList(); refreshCanvas();
