@@ -7,7 +7,7 @@ namespace wg {
 
 struct RenderContext {
   qreal masterOpacity = 1.0;
-  qreal progress = 1.0; // global transition progress 0..1
+  qreal progress = 1.0;
   bool entering = true;
   int totalDurationMs = 1000;
 };

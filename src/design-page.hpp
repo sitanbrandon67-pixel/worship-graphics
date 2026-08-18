@@ -7,6 +7,8 @@ class QLineEdit;
 class QSpinBox;
 class QDoubleSpinBox;
 class QComboBox;
+class QCheckBox;
+class QPushButton;
 
 namespace wg {
 class TimelineWidget;
@@ -27,15 +29,24 @@ private slots:
   void moveCurrentLayer(int delta);
   void toggleVisibility();
   void toggleLock();
-  void groupSelection();
-  void ungroupCurrent();
   void applyStagger();
   void importPsdPlaceholder();
   void saveTemplate();
   void loadSelectedTemplate();
+  void markBibleTemplate(bool checked);
+  void markAsVerseField();
+  void markAsReferenceField();
+  void alignLayerLeft();
+  void alignLayerCenterH();
+  void alignLayerRight();
+  void alignLayerTop();
+  void alignLayerCenterV();
+  void alignLayerBottom();
 private:
   void refreshCanvas();
   void setCurrentRowSafe(int row);
+  void setLayerName(const QString &name);
+  bool hasCurrentTextLayer() const;
 
   QListWidget *templates_ = nullptr;
   QListWidget *layers_ = nullptr;
@@ -48,16 +59,22 @@ private:
   QSpinBox *w_ = nullptr;
   QSpinBox *h_ = nullptr;
   QSpinBox *fontSize_ = nullptr;
+  QSpinBox *minFontSize_ = nullptr;
+  QSpinBox *maxLines_ = nullptr;
   QSpinBox *opacity_ = nullptr;
   QSpinBox *radius_ = nullptr;
   QDoubleSpinBox *rotation_ = nullptr;
   QSpinBox *enterDelay_ = nullptr;
   QSpinBox *exitDelay_ = nullptr;
-  QSpinBox *enterDuration_ = nullptr;
-  QSpinBox *exitDuration_ = nullptr;
+  QSpinBox *duration_ = nullptr;
   QComboBox *enterAnimation_ = nullptr;
   QComboBox *exitAnimation_ = nullptr;
-  TimelineWidget *timeline_ = nullptr;
+  QComboBox *textAlignH_ = nullptr;
+  QComboBox *textAlignV_ = nullptr;
+  QCheckBox *autoFit_ = nullptr;
+  QCheckBox *wrap_ = nullptr;
+  QCheckBox *splitOverflow_ = nullptr;
+  QCheckBox *bibleTemplate_ = nullptr;
   int currentRow_ = -1;
 };
 } // namespace wg
