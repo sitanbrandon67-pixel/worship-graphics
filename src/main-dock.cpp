@@ -18,7 +18,7 @@ MainDock::MainDock(QWidget *parent) : QWidget(parent)
   setStyleSheet(applicationTheme());
 
   // Operator can now live comfortably as a narrow OBS dock.
-  setMinimumSize(470, 520);
+  setMinimumSize(360, 260);
 
   auto *root = new QVBoxLayout(this);
   root->setContentsMargins(0, 0, 0, 0);
@@ -69,10 +69,10 @@ MainDock::MainDock(QWidget *parent) : QWidget(parent)
 
     if (id == 0) {
       // Compact operator workspace.
-      setMinimumSize(470, 520);
+      setMinimumSize(360, 260);
     } else {
       // Design keeps the full editor workspace.
-      setMinimumSize(1120, 720);
+      setMinimumSize(860, 620);
     }
   });
 }

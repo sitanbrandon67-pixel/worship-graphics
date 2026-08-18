@@ -47,18 +47,24 @@ OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
   statusLabel_ = new QLabel("● FUERA DEL AIRE");
   statusLabel_->setObjectName("wgSubtle");
 
+  auto *miniButton = new QPushButton("MINI");
+  miniButton->setObjectName("wgSoftButton");
+  miniButton->setCheckable(true);
+  miniButton->setToolTip("Oculta el monitor y las herramientas para dejar solo los controles en vivo");
+
   programHeader->addWidget(programTitle);
   programHeader->addSpacing(8);
   programHeader->addWidget(programNameLabel_);
   programHeader->addStretch();
+  programHeader->addWidget(miniButton);
   programHeader->addWidget(statusLabel_);
   programLayout->addLayout(programHeader);
 
   programScreen_ = new QLabel();
   programScreen_->setObjectName("wgScreen");
   programScreen_->setAlignment(Qt::AlignCenter);
-  programScreen_->setMinimumHeight(155);
-  programScreen_->setMaximumHeight(230);
+  programScreen_->setMinimumHeight(115);
+  programScreen_->setMaximumHeight(180);
   programLayout->addWidget(programScreen_);
 
   root->addWidget(programCard);
@@ -121,8 +127,8 @@ OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
 
   serviceList_ = new QListWidget();
   serviceList_->setObjectName("wgPreparedList");
-  serviceList_->setMinimumHeight(125);
-  serviceList_->setMaximumHeight(215);
+  serviceList_->setMinimumHeight(95);
+  serviceList_->setMaximumHeight(180);
   service->addWidget(serviceList_, 1);
 
   auto *serviceActions = new QHBoxLayout();
@@ -257,6 +263,14 @@ OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
   connect(book_, &QComboBox::currentIndexChanged, this, &OperatorPage::refreshChapters);
   connect(chapter_, &QComboBox::currentIndexChanged, this, &OperatorPage::refreshVerses);
   connect(selectButton, &QPushButton::clicked, this, &OperatorPage::selectBibleVerse);
+
+  connect(miniButton, &QPushButton::toggled, this, [this, miniButton](bool mini) {
+    programScreen_->setVisible(!mini);
+    tabs_->setVisible(!mini);
+    miniButton->setText(mini ? "COMPLETO" : "MINI");
+    setMinimumHeight(mini ? 165 : 420);
+    setMinimumWidth(mini ? 330 : 410);
+  });
 
   seedPreparedService();
   refreshProgram();

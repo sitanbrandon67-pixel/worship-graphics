@@ -12,6 +12,7 @@
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QInputDialog>
@@ -21,12 +22,66 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QPixmap>
+#include <QScrollArea>
 #include <QSpinBox>
+#include <QSplitter>
+#include <QResizeEvent>
 #include <QVBoxLayout>
+#include <QVector>
 #include <QUuid>
 #include <algorithm>
 
 namespace wg {
+
+
+namespace {
+class ResponsiveGrid final : public QWidget {
+public:
+  explicit ResponsiveGrid(int preferredCellWidth, QWidget *parent = nullptr)
+      : QWidget(parent), preferredCellWidth_(qMax(90, preferredCellWidth))
+  {
+    layout_ = new QGridLayout(this);
+    layout_->setContentsMargins(0, 0, 0, 0);
+    layout_->setHorizontalSpacing(8);
+    layout_->setVerticalSpacing(7);
+  }
+
+  void addItem(QWidget *widget)
+  {
+    if (!widget) return;
+    items_.push_back(widget);
+    relayout();
+  }
+
+protected:
+  void resizeEvent(QResizeEvent *event) override
+  {
+    QWidget::resizeEvent(event);
+    relayout();
+  }
+
+private:
+  void relayout()
+  {
+    if (items_.isEmpty()) return;
+    const int available = qMax(1, width());
+    const int columns = qBound(1, available / preferredCellWidth_, items_.size());
+
+    for (QWidget *widget : items_)
+      layout_->removeWidget(widget);
+
+    for (int i = 0; i < items_.size(); ++i)
+      layout_->addWidget(items_[i], i / columns, i % columns);
+
+    for (int c = 0; c < items_.size(); ++c)
+      layout_->setColumnStretch(c, c < columns ? 1 : 0);
+  }
+
+  QGridLayout *layout_ = nullptr;
+  QVector<QWidget *> items_;
+  int preferredCellWidth_ = 140;
+};
+} // namespace
 
 static QStringList animationNames()
 {
@@ -59,13 +114,17 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   templates_->setViewMode(QListView::IconMode);
   templates_->setResizeMode(QListView::Adjust);
   templates_->setMovement(QListView::Static);
+  templates_->setWrapping(false);
+  templates_->setFlow(QListView::LeftToRight);
+  templates_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  templates_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   templates_->setIconSize({160, 90});
   templates_->setSpacing(10);
   templates_->setFixedHeight(132);
   libraryLayout->addWidget(templates_);
   root->addWidget(libraryCard);
 
-  auto *toolbar = new QHBoxLayout();
+  auto *toolbar = new ResponsiveGrid(145);
   auto *importPsd = new QPushButton("IMPORTAR PSD");
   auto *addText = new QPushButton("+ TEXTO");
   auto *addShape = new QPushButton("+ FORMA");
@@ -73,14 +132,21 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   auto *duplicate = new QPushButton("DUPLICAR");
   auto *remove = new QPushButton("ELIMINAR"); remove->setObjectName("wgDanger");
   auto *stagger = new QPushButton("ESCALONAR 80ms");
-  toolbar->addWidget(importPsd); toolbar->addWidget(addText); toolbar->addWidget(addShape); toolbar->addWidget(addImage);
-  toolbar->addSpacing(10); toolbar->addWidget(duplicate); toolbar->addWidget(remove); toolbar->addStretch(); toolbar->addWidget(stagger);
-  root->addLayout(toolbar);
+  toolbar->addItem(importPsd);
+  toolbar->addItem(addText);
+  toolbar->addItem(addShape);
+  toolbar->addItem(addImage);
+  toolbar->addItem(duplicate);
+  toolbar->addItem(remove);
+  toolbar->addItem(stagger);
+  root->addWidget(toolbar);
 
-  auto *body = new QHBoxLayout();
-  body->setSpacing(12);
+  auto *splitter = new QSplitter(Qt::Horizontal);
+  splitter->setChildrenCollapsible(false);
+  splitter->setHandleWidth(8);
 
-  auto *layersCard = new QFrame(); layersCard->setObjectName("wgCard"); layersCard->setFixedWidth(285); applySoftShadow(layersCard);
+  auto *layersCard = new QFrame(); layersCard->setObjectName("wgCard"); layersCard->setMinimumWidth(220); layersCard->setMaximumWidth(360); applySoftShadow(layersCard);
+  layersCard->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
   auto *layersLayout = new QVBoxLayout(layersCard);
   auto *layersTitle = new QLabel("CAPAS"); layersTitle->setObjectName("wgSectionTitle"); layersLayout->addWidget(layersTitle);
   layers_ = new QListWidget();
@@ -93,19 +159,22 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   auto *layerActions2 = new QHBoxLayout();
   auto *group = new QPushButton("AGRUPAR"); auto *ungroup = new QPushButton("DESAGRUPAR");
   layerActions2->addWidget(group); layerActions2->addWidget(ungroup); layersLayout->addLayout(layerActions2);
-  body->addWidget(layersCard);
 
   auto *canvasCard = new QFrame(); canvasCard->setObjectName("wgCard"); applySoftShadow(canvasCard);
+  canvasCard->setMinimumWidth(360);
+  canvasCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   auto *canvasLayout = new QVBoxLayout(canvasCard);
   auto *canvasHeader = new QHBoxLayout();
   auto *canvasTitle = new QLabel("CANVAS · PREVISUALIZACIÓN DE TIEMPO"); canvasTitle->setObjectName("wgSectionTitle");
   auto *canvasInfo = new QLabel("1920×1080 · ARRASTRA EL PLAYHEAD"); canvasInfo->setObjectName("wgSubtle");
   canvasHeader->addWidget(canvasTitle); canvasHeader->addStretch(); canvasHeader->addWidget(canvasInfo); canvasLayout->addLayout(canvasHeader);
-  canvas_ = new QLabel(); canvas_->setObjectName("wgScreen"); canvas_->setAlignment(Qt::AlignCenter); canvas_->setMinimumSize(500, 281);
+  canvas_ = new QLabel(); canvas_->setObjectName("wgScreen"); canvas_->setAlignment(Qt::AlignCenter); canvas_->setMinimumSize(320, 180);
+  canvas_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   canvasLayout->addWidget(canvas_, 1);
-  body->addWidget(canvasCard, 1);
 
-  auto *propertiesCard = new QFrame(); propertiesCard->setObjectName("wgCard"); propertiesCard->setFixedWidth(350); applySoftShadow(propertiesCard);
+  auto *propertiesCard = new QFrame(); propertiesCard->setObjectName("wgCard"); applySoftShadow(propertiesCard);
+  propertiesCard->setMinimumWidth(285);
+  propertiesCard->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
   auto *propertiesLayout = new QVBoxLayout(propertiesCard);
   auto *propTitle = new QLabel("PROPIEDADES"); propTitle->setObjectName("wgSectionTitle"); propertiesLayout->addWidget(propTitle);
 
@@ -155,12 +224,28 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   alignRow2->addWidget(alignTop); alignRow2->addWidget(alignCenterV); alignRow2->addWidget(alignBottom); propertiesLayout->addLayout(alignRow2);
 
   auto *apply = new QPushButton("APLICAR CAMBIOS"); apply->setObjectName("wgPrimary"); propertiesLayout->addWidget(apply); propertiesLayout->addStretch();
-  body->addWidget(propertiesCard);
-  root->addLayout(body, 1);
+
+  auto *propertiesScroll = new QScrollArea();
+  propertiesScroll->setFrameShape(QFrame::NoFrame);
+  propertiesScroll->setWidgetResizable(true);
+  propertiesScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  propertiesScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  propertiesScroll->setMinimumWidth(300);
+  propertiesScroll->setWidget(propertiesCard);
+
+  splitter->addWidget(layersCard);
+  splitter->addWidget(canvasCard);
+  splitter->addWidget(propertiesScroll);
+  splitter->setStretchFactor(0, 0);
+  splitter->setStretchFactor(1, 1);
+  splitter->setStretchFactor(2, 0);
+  splitter->setSizes({250, 940, 330});
+
+  root->addWidget(splitter, 1);
 
   auto *timelineCard = new QFrame(); timelineCard->setObjectName("wgCard"); applySoftShadow(timelineCard);
   auto *timelineLayout = new QVBoxLayout(timelineCard); timelineLayout->setContentsMargins(10, 10, 10, 10); timelineLayout->setSpacing(8);
-  auto *timelineControls = new QHBoxLayout();
+  auto *timelineControls = new ResponsiveGrid(145);
   auto *phase = new QComboBox(); phase->addItems({"ENTRADA", "SALIDA"});
   auto *play = new QPushButton("▶ REPRODUCIR"); play->setObjectName("wgPrimary");
   auto *stop = new QPushButton("■ DETENER");
@@ -169,11 +254,27 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   auto *halfTime = new QPushButton("½ TIEMPO"); halfTime->setToolTip("Comprime todos los puntos de esta fase: animación 2× más rápida");
   auto *doubleTime = new QPushButton("×2 TIEMPO"); doubleTime->setToolTip("Estira todos los puntos de esta fase: animación 2× más lenta");
   auto *timeReadout = new QLabel("0.00 s"); timeReadout->setObjectName("wgSubtle");
-  timelineControls->addWidget(phase); timelineControls->addWidget(play); timelineControls->addWidget(stop); timelineControls->addSpacing(10);
-  timelineControls->addWidget(speedLabel); timelineControls->addWidget(speed); timelineControls->addSpacing(10);
-  timelineControls->addWidget(halfTime); timelineControls->addWidget(doubleTime); timelineControls->addStretch(); timelineControls->addWidget(timeReadout);
-  timelineLayout->addLayout(timelineControls);
-  timeline_ = new TimelineWidget(); timelineLayout->addWidget(timeline_);
+  timelineControls->addItem(phase);
+  timelineControls->addItem(play);
+  timelineControls->addItem(stop);
+  timelineControls->addItem(speedLabel);
+  timelineControls->addItem(speed);
+  timelineControls->addItem(halfTime);
+  timelineControls->addItem(doubleTime);
+  timelineControls->addItem(timeReadout);
+  timelineLayout->addWidget(timelineControls);
+
+  timeline_ = new TimelineWidget();
+  timeline_->setMinimumWidth(760);
+  auto *timelineScroll = new QScrollArea();
+  timelineScroll->setObjectName("wgTimelineScroll");
+  timelineScroll->setFrameShape(QFrame::NoFrame);
+  timelineScroll->setWidgetResizable(true);
+  timelineScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  timelineScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  timelineScroll->setWidget(timeline_);
+  timelineLayout->addWidget(timelineScroll);
+  timelineCard->setMinimumHeight(270);
   root->addWidget(timelineCard);
 
   auto &state = AppState::instance();
@@ -454,7 +555,8 @@ void DesignPage::alignLayerBottom()
 void DesignPage::refreshCanvas()
 {
   const QImage frame = AppState::instance().previewFrame();
-  canvas_->setPixmap(QPixmap::fromImage(frame).scaled(canvas_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+  const QSize target = canvas_->size().boundedTo(QSize(1600, 900));
+  canvas_->setPixmap(QPixmap::fromImage(frame).scaled(target, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 } // namespace wg
