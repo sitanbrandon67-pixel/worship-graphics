@@ -3,6 +3,7 @@
 #include "app-state.hpp"
 #include "output-source.hpp"
 #include "template-factory.hpp"
+#include "template-library.hpp"
 #include "theme.hpp"
 
 #include <QComboBox>
@@ -13,14 +14,69 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
+#include <QShowEvent>
 #include <QTabWidget>
 #include <QTextEdit>
 #include <QTimer>
 #include <QVBoxLayout>
 
 namespace wg {
+
+namespace {
+QString defaultBuiltinId(const QString &kind)
+{
+  if (kind == "scripture") return "builtin:scripture";
+  if (kind == "sermon") return "builtin:sermon";
+  if (kind == "worship") return "builtin:worship";
+  if (kind == "announcement") return "builtin:announcement";
+  return "builtin:pastor";
+}
+
+QString builtinName(const QString &id)
+{
+  if (id == "builtin:pastor") return "Pastor Clean";
+  if (id == "builtin:motion") return "Motion Pieces";
+  if (id == "builtin:scripture") return "Versículo";
+  if (id == "builtin:sermon") return "Tema de prédica";
+  if (id == "builtin:worship") return "Alabanza";
+  if (id == "builtin:announcement") return "Anuncio";
+  return "Plantilla";
+}
+
+Project builtinProject(const QString &id)
+{
+  if (id == "builtin:motion") return TemplateFactory::motionPiecesLowerThird();
+  if (id == "builtin:scripture") return TemplateFactory::scriptureLowerThird();
+  if (id == "builtin:sermon") return TemplateFactory::sermonTitleLowerThird();
+  if (id == "builtin:worship") return TemplateFactory::worshipLowerThird();
+  if (id == "builtin:announcement") return TemplateFactory::announcementLowerThird();
+  return TemplateFactory::pastorLowerThird();
+}
+
+bool fillBibleFields(Project &project, const QString &verse, const QString &reference)
+{
+  bool foundVerse = false;
+  bool foundReference = false;
+  for (auto &layer : project.layers) {
+    if (layer.name == "{{VERSICULO}}") {
+      layer.text = verse;
+      foundVerse = true;
+    }
+    if (layer.name == "{{REFERENCIA}}") {
+      layer.text = reference;
+      foundReference = true;
+    }
+  }
+  if (foundVerse && foundReference) {
+    project.usage = TemplateUsage::BibleText;
+    project.name = "Versículo · " + reference;
+  }
+  return foundVerse && foundReference;
+}
+} // namespace
 
 OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
 {
@@ -109,7 +165,7 @@ OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
   service->setContentsMargins(8, 8, 8, 8);
   service->setSpacing(7);
 
-  auto *serviceTop = new QHBoxLayout();
+  auto *serviceTop = new QGridLayout();
   serviceType_ = new QComboBox();
   serviceType_->addItem("Pastor / Persona", "pastor");
   serviceType_->addItem("Versículo", "scripture");
@@ -118,11 +174,23 @@ OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
   serviceType_->addItem("Anuncio", "announcement");
   serviceType_->addItem("Diseño actual", "current");
 
+  templateChoice_ = new QComboBox();
+  templateChoice_->setToolTip("Plantilla que se guardará dentro de este cintillo del Servicio preparado");
+
+  auto *typeLabel = new QLabel("Tipo");
+  typeLabel->setObjectName("wgSubtle");
+  auto *templateLabel = new QLabel("Plantilla");
+  templateLabel->setObjectName("wgSubtle");
+
   auto *addButton = new QPushButton("+ AGREGAR");
   addButton->setObjectName("wgPrimary");
 
-  serviceTop->addWidget(serviceType_, 1);
-  serviceTop->addWidget(addButton);
+  serviceTop->addWidget(typeLabel, 0, 0);
+  serviceTop->addWidget(serviceType_, 0, 1);
+  serviceTop->addWidget(templateLabel, 1, 0);
+  serviceTop->addWidget(templateChoice_, 1, 1);
+  serviceTop->addWidget(addButton, 0, 2, 2, 1);
+  serviceTop->setColumnStretch(1, 1);
   service->addLayout(serviceTop);
 
   serviceList_ = new QListWidget();
@@ -206,6 +274,15 @@ OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
   bibleResult_->setMaximumHeight(130);
   bibleLayout->addWidget(bibleResult_);
 
+  auto *bibleTemplateRow = new QHBoxLayout();
+  auto *bibleTemplateLabel = new QLabel("Plantilla");
+  bibleTemplateLabel->setObjectName("wgSubtle");
+  bibleTemplateChoice_ = new QComboBox();
+  bibleTemplateChoice_->setToolTip("Plantilla bíblica que se usará para PREPARAR o + A SERVICIO");
+  bibleTemplateRow->addWidget(bibleTemplateLabel);
+  bibleTemplateRow->addWidget(bibleTemplateChoice_, 1);
+  bibleLayout->addLayout(bibleTemplateRow);
+
   auto *bibleActions = new QHBoxLayout();
   auto *prepare = new QPushButton("PREPARAR");
   prepare->setObjectName("wgPrimary");
@@ -245,6 +322,7 @@ OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
   connect(previousButton, &QPushButton::clicked, this, &OperatorPage::previousPrepared);
   connect(nextButton, &QPushButton::clicked, this, &OperatorPage::nextPrepared);
 
+  connect(serviceType_, &QComboBox::currentIndexChanged, this, &OperatorPage::refreshTemplateChoices);
   connect(serviceList_, &QListWidget::currentRowChanged, this, &OperatorPage::loadPreparedSelection);
   connect(addButton, &QPushButton::clicked, this, &OperatorPage::addPreparedGraphic);
   connect(removeButton, &QPushButton::clicked, this, &OperatorPage::removePreparedGraphic);
@@ -264,6 +342,8 @@ OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
   connect(chapter_, &QComboBox::currentIndexChanged, this, &OperatorPage::refreshVerses);
   connect(selectButton, &QPushButton::clicked, this, &OperatorPage::selectBibleVerse);
 
+  connect(tabs_, &QTabWidget::currentChanged, this, [this](int) { refreshTemplateChoices(); });
+
   connect(miniButton, &QPushButton::toggled, this, [this, miniButton](bool mini) {
     programScreen_->setVisible(!mini);
     tabs_->setVisible(!mini);
@@ -272,21 +352,30 @@ OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
     setMinimumWidth(mini ? 330 : 410);
   });
 
+  refreshTemplateChoices();
   seedPreparedService();
   refreshProgram();
 
   QTimer::singleShot(0, this, &OperatorPage::tryLoadInstalledBible);
 }
 
+
+void OperatorPage::showEvent(QShowEvent *event)
+{
+  QWidget::showEvent(event);
+  refreshTemplateChoices();
+}
+
 void OperatorPage::seedPreparedService()
 {
   prepared_.clear();
-  prepared_.push_back({"Pastor principal", "pastor", TemplateFactory::pastorLowerThird()});
-  prepared_.push_back({"Versículo", "scripture", TemplateFactory::scriptureLowerThird()});
-  prepared_.push_back({"Tema de prédica", "sermon", TemplateFactory::sermonTitleLowerThird()});
-  prepared_.push_back({"Grupo de alabanza", "worship", TemplateFactory::worshipLowerThird()});
-  prepared_.push_back({"Anuncio", "announcement", TemplateFactory::announcementLowerThird()});
-
+  const QStringList kinds = {"pastor", "scripture", "sermon", "worship", "announcement"};
+  for (const QString &kind : kinds) {
+    QString id = TemplateLibrary::defaultTemplate(kind);
+    if (id.isEmpty()) id = defaultBuiltinId(kind);
+    Project p = projectForTemplate(kind, id);
+    appendPrepared(p.name, kind, p, false);
+  }
   rebuildPreparedList(0);
 }
 
@@ -322,27 +411,87 @@ void OperatorPage::rebuildPreparedList(int selectedRow)
   serviceList_->setCurrentRow(selectedRow);
 }
 
-Project OperatorPage::projectForServiceKind(const QString &kind) const
+void OperatorPage::populateTemplateCombo(QComboBox *combo, const QString &kind) const
 {
-  if (kind == "pastor")
-    return TemplateFactory::pastorLowerThird();
+  if (!combo) return;
+  combo->blockSignals(true);
+  combo->clear();
 
-  if (kind == "scripture") {
-    if (currentPassage_.valid)
-      return AppState::instance().bibleProjectForPassage(currentPassage_.text, currentPassage_.reference);
-    return AppState::instance().bibleProjectForPassage("Porque de tal manera amó Dios al mundo...", "Juan 3:16");
+  if (kind == "current") {
+    combo->addItem("Diseño actual", "current");
+    combo->setEnabled(false);
+    combo->blockSignals(false);
+    return;
+  }
+  combo->setEnabled(true);
+
+  if (kind == "pastor") {
+    combo->addItem("Integrada · Pastor Clean", "builtin:pastor");
+    combo->addItem("Integrada · Motion Pieces", "builtin:motion");
+  } else {
+    const QString builtin = defaultBuiltinId(kind);
+    combo->addItem("Integrada · " + builtinName(builtin), builtin);
   }
 
-  if (kind == "sermon")
-    return TemplateFactory::sermonTitleLowerThird();
+  for (const TemplateEntry &entry : TemplateLibrary::entries()) {
+    if (kind == "scripture") {
+      if (entry.usage != TemplateUsage::BibleText) continue;
+    } else {
+      if (entry.usage == TemplateUsage::BibleText) continue;
+    }
+    combo->addItem("Mi plantilla · " + entry.name, entry.filePath);
+  }
 
-  if (kind == "worship")
-    return TemplateFactory::worshipLowerThird();
+  QString preferred = TemplateLibrary::defaultTemplate(kind);
+  if (preferred.isEmpty()) preferred = defaultBuiltinId(kind);
+  const int preferredIndex = combo->findData(preferred);
+  combo->setCurrentIndex(preferredIndex >= 0 ? preferredIndex : 0);
+  combo->blockSignals(false);
+}
 
-  if (kind == "announcement")
-    return TemplateFactory::announcementLowerThird();
+void OperatorPage::refreshTemplateChoices()
+{
+  const QString kind = serviceType_ ? serviceType_->currentData().toString() : QString("pastor");
+  populateTemplateCombo(templateChoice_, kind);
+  populateTemplateCombo(bibleTemplateChoice_, "scripture");
+}
 
-  return AppState::instance().project();
+Project OperatorPage::projectForTemplate(const QString &kind, const QString &templateId) const
+{
+  if (kind == "current") return AppState::instance().project();
+
+  Project project;
+  if (templateId.startsWith("builtin:")) {
+    project = builtinProject(templateId);
+  } else {
+    QString error;
+    if (!TemplateLibrary::load(templateId, &project, &error)) {
+      project = builtinProject(defaultBuiltinId(kind));
+    }
+  }
+
+  if (kind == "scripture") {
+    const QString verseText = currentPassage_.valid
+        ? currentPassage_.text
+        : QString("Porque de tal manera amó Dios al mundo...");
+    const QString referenceText = currentPassage_.valid
+        ? currentPassage_.reference
+        : QString("Juan 3:16");
+    if (!fillBibleFields(project, verseText, referenceText))
+      project = TemplateFactory::scriptureLowerThird(verseText, referenceText);
+  }
+  return project;
+}
+
+Project OperatorPage::projectForServiceKind(const QString &kind) const
+{
+  if (kind == "current") return AppState::instance().project();
+  QString id = templateChoice_ ? templateChoice_->currentData().toString() : QString();
+  if (id.isEmpty()) {
+    id = TemplateLibrary::defaultTemplate(kind);
+    if (id.isEmpty()) id = defaultBuiltinId(kind);
+  }
+  return projectForTemplate(kind, id);
 }
 
 void OperatorPage::loadPreparedSelection(int row)
@@ -360,8 +509,11 @@ void OperatorPage::addPreparedGraphic()
   Project project = projectForServiceKind(kind);
 
   QString label = project.name;
-  if (kind == "current")
+  if (kind == "current") {
     label = "Diseño actual · " + project.name;
+  } else if (templateChoice_ && templateChoice_->currentIndex() >= 0) {
+    label = serviceType_->currentText() + " · " + templateChoice_->currentText().replace("Integrada · ", "").replace("Mi plantilla · ", "");
+  }
 
   appendPrepared(label, kind, project, true);
 }
@@ -545,7 +697,10 @@ void OperatorPage::prepareBibleForProgram()
   if (!currentPassage_.valid)
     return;
 
-  AppState::instance().applyBiblePassage(currentPassage_.text, currentPassage_.reference);
+  const QString id = bibleTemplateChoice_ && bibleTemplateChoice_->currentIndex() >= 0
+      ? bibleTemplateChoice_->currentData().toString()
+      : defaultBuiltinId("scripture");
+  AppState::instance().loadProject(projectForTemplate("scripture", id));
   preparedLabel_->setText("PRÓXIMO · " + currentPassage_.reference + " · aún no está al aire");
 }
 
@@ -554,10 +709,14 @@ void OperatorPage::addBibleToService()
   if (!currentPassage_.valid)
     return;
 
-  appendPrepared("Versículo · " + currentPassage_.reference,
-                 "scripture",
-                 AppState::instance().bibleProjectForPassage(currentPassage_.text, currentPassage_.reference),
-                 true);
+  const QString id = bibleTemplateChoice_ && bibleTemplateChoice_->currentIndex() >= 0
+      ? bibleTemplateChoice_->currentData().toString()
+      : defaultBuiltinId("scripture");
+  Project project = projectForTemplate("scripture", id);
+  const QString templateName = bibleTemplateChoice_ ? bibleTemplateChoice_->currentText() : QString("Versículo");
+
+  appendPrepared("Versículo · " + currentPassage_.reference + " · " + templateName.replace("Integrada · ", "").replace("Mi plantilla · ", ""),
+                 "scripture", project, true);
 
   tabs_->setCurrentIndex(0);
 }

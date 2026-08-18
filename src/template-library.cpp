@@ -8,9 +8,17 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QSettings>
 #include <QStandardPaths>
 
 namespace wg {
+
+namespace {
+QString defaultKey(const QString &serviceKind)
+{
+  return "templates/default/" + serviceKind.trimmed().toLower();
+}
+}
 
 QString TemplateLibrary::libraryPath()
 {
@@ -33,12 +41,24 @@ QVector<TemplateEntry> TemplateLibrary::entries()
   QVector<TemplateEntry> result;
   QDir dir(libraryPath());
   const auto files = dir.entryInfoList({"*.wgtpl"}, QDir::Files, QDir::Time);
+
   for (const QFileInfo &file : files) {
     TemplateEntry entry;
     entry.filePath = file.absoluteFilePath();
     entry.name = file.completeBaseName().replace('_', ' ');
     const QString thumb = file.absolutePath() + "/" + file.completeBaseName() + ".png";
     if (QFile::exists(thumb)) entry.thumbnailPath = thumb;
+
+    QFile jsonFile(entry.filePath);
+    if (jsonFile.open(QIODevice::ReadOnly)) {
+      const QJsonDocument doc = QJsonDocument::fromJson(jsonFile.readAll());
+      if (doc.isObject()) {
+        const QJsonObject root = doc.object();
+        entry.name = root.value("name").toString(entry.name);
+        entry.usage = static_cast<TemplateUsage>(root.value("usage").toInt(0));
+      }
+    }
+
     result.push_back(entry);
   }
   return result;
@@ -83,7 +103,9 @@ bool TemplateLibrary::save(const Project &project, const QString &name, QString 
   file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
   file.close();
 
-  GraphicsRenderer::render(project).scaled(480, 270, Qt::KeepAspectRatio, Qt::SmoothTransformation).save(base + ".png");
+  GraphicsRenderer::render(project)
+      .scaled(480, 270, Qt::KeepAspectRatio, Qt::SmoothTransformation)
+      .save(base + ".png");
   return true;
 }
 
@@ -131,6 +153,52 @@ bool TemplateLibrary::load(const QString &filePath, Project *project, QString *e
   }
   *project = std::move(out);
   return true;
+}
+
+bool TemplateLibrary::remove(const QString &filePath, QString *error)
+{
+  const QFileInfo info(filePath);
+  if (!info.exists() || info.suffix().compare("wgtpl", Qt::CaseInsensitive) != 0) {
+    if (error) *error = "La plantilla seleccionada no existe.";
+    return false;
+  }
+
+  const QString expectedDir = QDir::cleanPath(QFileInfo(libraryPath()).absoluteFilePath());
+  const QString actualDir = QDir::cleanPath(info.absolutePath());
+  if (expectedDir != actualDir) {
+    if (error) *error = "Solo se pueden eliminar plantillas personales de Worship Graphics.";
+    return false;
+  }
+
+  const QString thumb = info.absolutePath() + "/" + info.completeBaseName() + ".png";
+  if (!QFile::remove(info.absoluteFilePath())) {
+    if (error) *error = "No se pudo eliminar la plantilla.";
+    return false;
+  }
+  if (QFile::exists(thumb)) QFile::remove(thumb);
+
+  QSettings settings("WorshipGraphics", "WorshipGraphics");
+  const QStringList kinds = {"pastor", "scripture", "sermon", "worship", "announcement"};
+  for (const QString &kind : kinds) {
+    const QString key = defaultKey(kind);
+    if (settings.value(key).toString() == info.absoluteFilePath())
+      settings.remove(key);
+  }
+  settings.sync();
+  return true;
+}
+
+void TemplateLibrary::setDefaultTemplate(const QString &serviceKind, const QString &templateId)
+{
+  QSettings settings("WorshipGraphics", "WorshipGraphics");
+  settings.setValue(defaultKey(serviceKind), templateId);
+  settings.sync();
+}
+
+QString TemplateLibrary::defaultTemplate(const QString &serviceKind)
+{
+  QSettings settings("WorshipGraphics", "WorshipGraphics");
+  return settings.value(defaultKey(serviceKind)).toString();
 }
 
 } // namespace wg

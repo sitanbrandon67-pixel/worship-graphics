@@ -1,7 +1,6 @@
 #pragma once
 
 #include "model.hpp"
-#include <QImage>
 #include <QString>
 #include <QVector>
 
@@ -11,6 +10,7 @@ struct TemplateEntry {
   QString name;
   QString filePath;
   QString thumbnailPath;
+  TemplateUsage usage = TemplateUsage::Generic;
 };
 
 class TemplateLibrary {
@@ -19,6 +19,12 @@ public:
   static QVector<TemplateEntry> entries();
   static bool save(const Project &project, const QString &name, QString *error = nullptr);
   static bool load(const QString &filePath, Project *project, QString *error = nullptr);
+  static bool remove(const QString &filePath, QString *error = nullptr);
+
+  // templateId can be a built-in id (builtin:pastor, builtin:scripture, ...)
+  // or the absolute .wgtpl path of a user template.
+  static void setDefaultTemplate(const QString &serviceKind, const QString &templateId);
+  static QString defaultTemplate(const QString &serviceKind);
 };
 
 } // namespace wg

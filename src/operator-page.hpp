@@ -11,6 +11,7 @@ class QLineEdit;
 class QTextEdit;
 class QComboBox;
 class QTabWidget;
+class QShowEvent;
 
 namespace wg {
 
@@ -25,8 +26,12 @@ class OperatorPage final : public QWidget {
 public:
   explicit OperatorPage(QWidget *parent = nullptr);
 
+protected:
+  void showEvent(QShowEvent *event) override;
+
 private slots:
   void refreshProgram();
+  void refreshTemplateChoices();
 
   void loadPreparedSelection(int row);
   void addPreparedGraphic();
@@ -53,6 +58,8 @@ private:
   void seedPreparedService();
   void appendPrepared(const QString &label, const QString &kind, const Project &project, bool select = true);
   void rebuildPreparedList(int selectedRow = -1);
+  void populateTemplateCombo(QComboBox *combo, const QString &kind) const;
+  Project projectForTemplate(const QString &kind, const QString &templateId) const;
   Project projectForServiceKind(const QString &kind) const;
 
   QLabel *programScreen_ = nullptr;
@@ -62,6 +69,8 @@ private:
 
   QListWidget *serviceList_ = nullptr;
   QComboBox *serviceType_ = nullptr;
+  QComboBox *templateChoice_ = nullptr;
+  QComboBox *bibleTemplateChoice_ = nullptr;
   QTabWidget *tabs_ = nullptr;
 
   QLineEdit *bibleSearch_ = nullptr;

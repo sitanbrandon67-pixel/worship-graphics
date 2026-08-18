@@ -10,6 +10,7 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QFrame>
 #include <QGridLayout>
@@ -109,6 +110,25 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   auto *save = new QPushButton("GUARDAR PLANTILLA"); save->setObjectName("wgSoftButton");
   libraryTitle->addWidget(title); libraryTitle->addStretch(); libraryTitle->addWidget(save);
   libraryLayout->addLayout(libraryTitle);
+
+  auto *libraryActions = new ResponsiveGrid(185);
+  auto *templateTarget = new QComboBox();
+  templateTarget->addItem("Pastor / Persona", "pastor");
+  templateTarget->addItem("Versículo", "scripture");
+  templateTarget->addItem("Tema de prédica", "sermon");
+  templateTarget->addItem("Alabanza", "worship");
+  templateTarget->addItem("Anuncio", "announcement");
+  auto *useTemplate = new QPushButton("USAR COMO ACTIVA");
+  useTemplate->setObjectName("wgPrimary");
+  auto *deleteTemplate = new QPushButton("ELIMINAR PLANTILLA");
+  deleteTemplate->setObjectName("wgDanger");
+  auto *activeTemplateLabel = new QLabel("Activa: integrada");
+  activeTemplateLabel->setObjectName("wgSubtle");
+  libraryActions->addItem(templateTarget);
+  libraryActions->addItem(useTemplate);
+  libraryActions->addItem(deleteTemplate);
+  libraryActions->addItem(activeTemplateLabel);
+  libraryLayout->addWidget(libraryActions);
   templates_ = new QListWidget();
   templates_->setObjectName("wgTemplateLibrary");
   templates_->setViewMode(QListView::IconMode);
@@ -297,6 +317,88 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   connect(importPsd, &QPushButton::clicked, this, &DesignPage::importPsdPlaceholder);
   connect(save, &QPushButton::clicked, this, &DesignPage::saveTemplate);
   connect(templates_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *) { loadSelectedTemplate(); });
+
+  auto refreshActiveTemplateLabel = [templateTarget, activeTemplateLabel]() {
+    const QString kind = templateTarget->currentData().toString();
+    const QString id = TemplateLibrary::defaultTemplate(kind);
+    QString name;
+    if (id.isEmpty()) {
+      if (kind == "scripture") name = "Versículo";
+      else if (kind == "sermon") name = "Tema de prédica";
+      else if (kind == "worship") name = "Alabanza";
+      else if (kind == "announcement") name = "Anuncio";
+      else name = "Pastor Clean";
+    }
+    if (id == "builtin:pastor") name = "Pastor Clean";
+    else if (id == "builtin:motion") name = "Motion Pieces";
+    else if (id == "builtin:scripture") name = "Versículo";
+    else if (id == "builtin:sermon") name = "Tema de prédica";
+    else if (id == "builtin:worship") name = "Alabanza";
+    else if (id == "builtin:announcement") name = "Anuncio";
+    else if (!id.isEmpty()) name = QFileInfo(id).completeBaseName().replace('_', ' ');
+    activeTemplateLabel->setText("Activa: " + name);
+  };
+
+  connect(templateTarget, &QComboBox::currentIndexChanged, this, [refreshActiveTemplateLabel](int) {
+    refreshActiveTemplateLabel();
+  });
+
+  connect(useTemplate, &QPushButton::clicked, this, [this, templateTarget, refreshActiveTemplateLabel] {
+    auto *item = templates_->currentItem();
+    if (!item) {
+      QMessageBox::information(this, "Plantillas", "Selecciona primero una plantilla de la biblioteca.");
+      return;
+    }
+
+    const QString id = item->data(Qt::UserRole).toString();
+    const QString kind = templateTarget->currentData().toString();
+
+    if (kind == "scripture") {
+      bool validBible = id == "builtin:scripture";
+      if (!id.startsWith("builtin:")) {
+        Project p; QString error;
+        if (TemplateLibrary::load(id, &p, &error))
+          validBible = p.usage == TemplateUsage::BibleText;
+      }
+      if (!validBible) {
+        QMessageBox::warning(this, "Plantilla bíblica",
+                             "Para Versículo, selecciona una plantilla marcada como PLANTILLA BÍBLICA y con {{VERSICULO}} / {{REFERENCIA}}.");
+        return;
+      }
+    }
+
+    TemplateLibrary::setDefaultTemplate(kind, id);
+    refreshActiveTemplateLabel();
+    QMessageBox::information(this, "Plantilla activa",
+                             item->text() + " será la plantilla predeterminada para " + templateTarget->currentText() + ".");
+  });
+
+  connect(deleteTemplate, &QPushButton::clicked, this, [this, refreshActiveTemplateLabel] {
+    auto *item = templates_->currentItem();
+    if (!item) {
+      QMessageBox::information(this, "Plantillas", "Selecciona la plantilla que quieres eliminar.");
+      return;
+    }
+
+    const QString id = item->data(Qt::UserRole).toString();
+    if (id.startsWith("builtin:")) {
+      QMessageBox::information(this, "Plantillas", "Las plantillas integradas no se eliminan; puedes simplemente no usarlas.");
+      return;
+    }
+
+    if (QMessageBox::question(this, "Eliminar plantilla",
+                              "¿Eliminar definitivamente ‘" + item->text() + "’ de tu biblioteca?") != QMessageBox::Yes)
+      return;
+
+    QString error;
+    if (!TemplateLibrary::remove(id, &error)) {
+      QMessageBox::warning(this, "Plantillas", error);
+      return;
+    }
+    refreshTemplateLibrary();
+    refreshActiveTemplateLabel();
+  });
+  refreshActiveTemplateLabel();
   connect(bibleTemplate_, &QCheckBox::toggled, this, &DesignPage::markBibleTemplate);
   connect(verseField, &QPushButton::clicked, this, &DesignPage::markAsVerseField);
   connect(referenceField, &QPushButton::clicked, this, &DesignPage::markAsReferenceField);
