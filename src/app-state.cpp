@@ -1,8 +1,12 @@
 #include "app-state.hpp"
 #include "graphics-renderer.hpp"
+#include "template-factory.hpp"
 
+#include <QHash>
+#include <QSet>
 #include <QWriteLocker>
 #include <QUuid>
+#include <algorithm>
 
 namespace wg {
 
@@ -15,69 +19,37 @@ AppState &AppState::instance()
 AppState::AppState()
 {
   resetDemoProject();
-  animation_.setDuration(450);
   animation_.setStartValue(0.0);
   animation_.setEndValue(1.0);
-  animation_.setEasingCurve(QEasingCurve::OutCubic);
+  animation_.setEasingCurve(QEasingCurve::Linear);
 }
 
-void AppState::resetDemoProject()
+void AppState::loadProject(const Project &project)
 {
-  project_ = {};
-  project_.layers.clear();
-
-  Layer group;
-  group.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-  group.name = "Cintillo Pastor";
-  group.type = LayerType::Group;
-  project_.layers.push_back(group);
-
-  Layer accent;
-  accent.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-  accent.parentId = group.id;
-  accent.name = "Acento";
-  accent.type = LayerType::Shape;
-  accent.position = {88, 812};
-  accent.size = {20, 150};
-  accent.color = QColor("#D9B35F");
-  project_.layers.push_back(accent);
-
-  Layer background;
-  background.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-  background.parentId = group.id;
-  background.name = "Fondo";
-  background.type = LayerType::Shape;
-  background.position = {108, 812};
-  background.size = {720, 150};
-  background.color = QColor(14, 19, 28, 235);
-  project_.layers.push_back(background);
-
-  Layer name;
-  name.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-  name.parentId = group.id;
-  name.name = "{{NOMBRE}}";
-  name.type = LayerType::Text;
-  name.position = {150, 830};
-  name.size = {620, 62};
-  name.text = "PASTOR CARLOS LÓPEZ";
-  name.color = Qt::white;
-  name.fontSize = 38;
-  name.bold = true;
-  project_.layers.push_back(name);
-
-  Layer role;
-  role.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-  role.parentId = group.id;
-  role.name = "{{CARGO}}";
-  role.type = LayerType::Text;
-  role.position = {150, 895};
-  role.size = {620, 44};
-  role.text = "PASTOR PRINCIPAL";
-  role.color = QColor("#D9B35F");
-  role.fontSize = 24;
-  project_.layers.push_back(role);
-
+  project_ = project;
   rebuildPreview();
+  emit modelChanged();
+}
+
+void AppState::resetDemoProject() { loadProject(TemplateFactory::pastorLowerThird()); }
+void AppState::loadMotionTemplate() { loadProject(TemplateFactory::motionPiecesLowerThird()); }
+void AppState::loadScriptureTemplate(const QString &verse, const QString &reference)
+{
+  loadProject(TemplateFactory::scriptureLowerThird(verse, reference));
+}
+
+void AppState::applyBiblePassage(const QString &verse, const QString &reference)
+{
+  bool foundVerse = false, foundReference = false;
+  for (auto &layer : project_.layers) {
+    if (layer.name == "{{VERSICULO}}") { layer.text = verse; foundVerse = true; }
+    if (layer.name == "{{REFERENCIA}}") { layer.text = reference; foundReference = true; }
+  }
+  if (!foundVerse || !foundReference) {
+    loadScriptureTemplate(verse, reference);
+    return;
+  }
+  notifyModelChanged();
 }
 
 QImage AppState::previewFrame() const
@@ -94,7 +66,11 @@ QImage AppState::programFrame() const
 
 void AppState::rebuildPreview()
 {
-  QImage next = GraphicsRenderer::render(project_);
+  RenderContext ctx;
+  ctx.progress = 1.0;
+  ctx.entering = true;
+  ctx.totalDurationMs = transitionDuration(true);
+  QImage next = GraphicsRenderer::render(project_, ctx);
   {
     QWriteLocker lock(&frameLock_);
     previewFrame_ = std::move(next);
@@ -102,12 +78,23 @@ void AppState::rebuildPreview()
   emit previewChanged();
 }
 
+int AppState::transitionDuration(bool entering) const
+{
+  int total = 300;
+  for (const auto &layer : project_.layers) {
+    if (layer.type == LayerType::Group || !layer.visible) continue;
+    const int delay = entering ? layer.enterDelayMs : layer.exitDelayMs;
+    total = qMax(total, delay + qMax(80, layer.animationDurationMs));
+  }
+  return total;
+}
+
 void AppState::renderProgramAnimation(qreal progress, bool entering)
 {
   RenderContext ctx;
   ctx.progress = progress;
   ctx.entering = entering;
-  ctx.masterOpacity = 1.0;
+  ctx.totalDurationMs = transitionDuration(entering);
   QImage next = GraphicsRenderer::render(project_, ctx);
   {
     QWriteLocker lock(&frameLock_);
@@ -122,7 +109,9 @@ void AppState::showPreviewOnProgram()
   disconnect(&animation_, nullptr, this, nullptr);
   programVisible_ = true;
   emit onAirChanged(true);
-  animation_.setDirection(QAbstractAnimation::Forward);
+  animation_.setDuration(transitionDuration(true));
+  animation_.setStartValue(0.0);
+  animation_.setEndValue(1.0);
   connect(&animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
     renderProgramAnimation(value.toReal(), true);
   });
@@ -132,11 +121,12 @@ void AppState::showPreviewOnProgram()
 
 void AppState::hideProgram()
 {
-  if (!programVisible_)
-    return;
+  if (!programVisible_) return;
   animation_.stop();
   disconnect(&animation_, nullptr, this, nullptr);
-  animation_.setDirection(QAbstractAnimation::Backward);
+  animation_.setDuration(transitionDuration(false));
+  animation_.setStartValue(0.0);
+  animation_.setEndValue(1.0);
   connect(&animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
     renderProgramAnimation(value.toReal(), false);
   });
@@ -155,19 +145,141 @@ void AppState::hideProgram()
 
 void AppState::setLayerText(int index, const QString &text)
 {
-  if (index < 0 || index >= project_.layers.size())
-    return;
-  if (project_.layers[index].type != LayerType::Text)
-    return;
+  if (index < 0 || index >= project_.layers.size()) return;
+  if (project_.layers[index].type != LayerType::Text) return;
   project_.layers[index].text = text;
-  rebuildPreview();
-  emit modelChanged();
+  notifyModelChanged();
 }
 
 void AppState::notifyModelChanged()
 {
   rebuildPreview();
   emit modelChanged();
+}
+
+bool AppState::removeLayer(int index)
+{
+  if (index < 0 || index >= project_.layers.size()) return false;
+  const QString id = project_.layers[index].id;
+  QSet<QString> removeIds{id};
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (const auto &layer : project_.layers) {
+      if (removeIds.contains(layer.parentId) && !removeIds.contains(layer.id)) {
+        removeIds.insert(layer.id); changed = true;
+      }
+    }
+  }
+  for (int i = project_.layers.size() - 1; i >= 0; --i)
+    if (removeIds.contains(project_.layers[i].id)) project_.layers.removeAt(i);
+  notifyModelChanged();
+  return true;
+}
+
+bool AppState::duplicateLayer(int index)
+{
+  if (index < 0 || index >= project_.layers.size()) return false;
+  const QString sourceId = project_.layers[index].id;
+  QVector<int> indices{index};
+  for (int i = 0; i < project_.layers.size(); ++i) {
+    QString parent = project_.layers[i].parentId;
+    while (!parent.isEmpty()) {
+      if (parent == sourceId) { if (!indices.contains(i)) indices << i; break; }
+      QString next;
+      for (const auto &l : project_.layers) if (l.id == parent) { next = l.parentId; break; }
+      parent = next;
+    }
+  }
+  std::sort(indices.begin(), indices.end());
+  QHash<QString, QString> idMap;
+  QVector<Layer> copies;
+  for (int i : indices) idMap.insert(project_.layers[i].id, QUuid::createUuid().toString(QUuid::WithoutBraces));
+  for (int i : indices) {
+    Layer copy = project_.layers[i];
+    const QString oldId = copy.id;
+    copy.id = idMap.value(oldId);
+    if (idMap.contains(copy.parentId)) copy.parentId = idMap.value(copy.parentId);
+    copy.position += QPointF(24, 24);
+    if (i == index) copy.name += " copia";
+    copies << copy;
+  }
+  int insertAt = indices.last() + 1;
+  for (const auto &copy : copies) project_.layers.insert(insertAt++, copy);
+  notifyModelChanged();
+  return true;
+}
+
+bool AppState::moveLayer(int index, int delta)
+{
+  const int target = index + delta;
+  if (index < 0 || index >= project_.layers.size() || target < 0 || target >= project_.layers.size()) return false;
+  project_.layers.move(index, target);
+  notifyModelChanged();
+  return true;
+}
+
+bool AppState::toggleLayerVisible(int index)
+{
+  if (index < 0 || index >= project_.layers.size()) return false;
+  const bool value = !project_.layers[index].visible;
+  const QString id = project_.layers[index].id;
+  project_.layers[index].visible = value;
+  if (project_.layers[index].type == LayerType::Group)
+    for (auto &l : project_.layers) if (l.parentId == id) l.visible = value;
+  notifyModelChanged(); return true;
+}
+
+bool AppState::toggleLayerLocked(int index)
+{
+  if (index < 0 || index >= project_.layers.size()) return false;
+  const bool value = !project_.layers[index].locked;
+  const QString id = project_.layers[index].id;
+  project_.layers[index].locked = value;
+  if (project_.layers[index].type == LayerType::Group)
+    for (auto &l : project_.layers) if (l.parentId == id) l.locked = value;
+  notifyModelChanged(); return true;
+}
+
+bool AppState::groupLayers(const QVector<int> &rows)
+{
+  if (rows.size() < 2) return false;
+  QVector<int> sorted = rows;
+  std::sort(sorted.begin(), sorted.end());
+  Layer group; group.id = QUuid::createUuid().toString(QUuid::WithoutBraces); group.name = "Grupo"; group.type = LayerType::Group;
+  const int insertAt = sorted.first();
+  project_.layers.insert(insertAt, group);
+  for (int row : sorted) {
+    const int adjusted = row >= insertAt ? row + 1 : row;
+    if (adjusted >= 0 && adjusted < project_.layers.size() && project_.layers[adjusted].id != group.id)
+      project_.layers[adjusted].parentId = group.id;
+  }
+  notifyModelChanged(); return true;
+}
+
+bool AppState::ungroupLayer(int index)
+{
+  if (index < 0 || index >= project_.layers.size()) return false;
+  const Layer layer = project_.layers[index];
+  if (layer.type == LayerType::Group) {
+    for (auto &l : project_.layers) if (l.parentId == layer.id) l.parentId = layer.parentId;
+    project_.layers.removeAt(index);
+  } else {
+    project_.layers[index].parentId.clear();
+  }
+  notifyModelChanged(); return true;
+}
+
+void AppState::staggerLayers(int stepMs)
+{
+  int i = 0;
+  for (auto &layer : project_.layers) {
+    if (layer.type == LayerType::Group) continue;
+    layer.enterDelayMs = i * stepMs;
+    layer.exitDelayMs = (qMax(0, project_.layers.size() - i - 1)) * (stepMs / 2);
+    ++i;
+  }
+  notifyModelChanged();
 }
 
 } // namespace wg

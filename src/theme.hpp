@@ -1,3 +1,7 @@
 #pragma once
 #include <QString>
-namespace wg { QString applicationTheme(); }
+class QWidget;
+namespace wg {
+QString applicationTheme();
+void applySoftShadow(QWidget *widget);
+}

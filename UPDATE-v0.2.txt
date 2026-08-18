@@ -1,0 +1,17 @@
+WORSHIP GRAPHICS 0.2 UPDATE
+
+Replace/upload this project's files over the current repository, preserving:
+.github/workflows/build-windows.yml
+
+Then commit to main. GitHub Actions will build WorshipGraphics-Setup-0.2.0.exe.
+
+After installing v0.2 in OBS:
+1. Open Paneles -> Worship Graphics.
+2. Operator -> Biblia Offline -> IMPORTAR XML.
+3. Select your local SpanishRVR1960Bible.xml once.
+4. Search Juan 3:16 / Jn 3 16 / Salmos 23.
+5. Click USAR EN PREVIEW, then ENVIAR AL AIRE.
+6. Design -> double-click Motion Pieces to load the animated multi-piece lower third.
+7. Select a layer to edit entry/exit, delay and duration.
+8. Use ESCALONAR 80ms for automatic staggered motion.
+9. ELIMINAR now removes the selected layer (and children if it is a group).

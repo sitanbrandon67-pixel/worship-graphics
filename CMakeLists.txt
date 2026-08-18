@@ -15,7 +15,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(${CMAKE_PROJECT_NAME} MODULE)
-
 find_package(libobs REQUIRED)
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs)
 
@@ -40,30 +39,27 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
   src/operator-page.cpp src/operator-page.hpp
   src/design-page.cpp src/design-page.hpp
   src/theme.cpp src/theme.hpp
+  src/template-factory.cpp src/template-factory.hpp
+  src/template-library.cpp src/template-library.hpp
+  src/timeline-widget.cpp src/timeline-widget.hpp
+  src/bible-engine.cpp src/bible-engine.hpp
   src/module-stubs.hpp
 )
 
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE WG_VERSION="${PROJECT_VERSION}")
-
 if(MSVC)
   target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE /W4 /permissive-)
 endif()
 
-# Keep the official OBS template target setup (resources, Windows metadata, etc.).
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
 
-# CPack below creates an installer that is pointed directly at an OBS Studio
-# installation directory. Therefore also install the DLL in the legacy/native
-# OBS plugin directory that OBS scans at runtime.
+# Direct OBS runtime layout for our standalone NSIS installer.
 if(WIN32)
-  install(
-    TARGETS ${CMAKE_PROJECT_NAME}
+  install(TARGETS ${CMAKE_PROJECT_NAME}
     RUNTIME DESTINATION "obs-plugins/64bit"
     LIBRARY DESTINATION "obs-plugins/64bit"
   )
 endif()
-
-# Data path scanned by OBS for plugin locale/resources.
 install(DIRECTORY data/ DESTINATION "data/obs-plugins/${_name}")
 
 if(WG_BUILD_INSTALLER AND WIN32)
@@ -78,4 +74,3 @@ if(WG_BUILD_INSTALLER AND WIN32)
   set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
   include(CPack)
 endif()
-

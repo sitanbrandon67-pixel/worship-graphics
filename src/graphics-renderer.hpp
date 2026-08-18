@@ -7,8 +7,9 @@ namespace wg {
 
 struct RenderContext {
   qreal masterOpacity = 1.0;
-  qreal progress = 1.0;
+  qreal progress = 1.0; // global transition progress 0..1
   bool entering = true;
+  int totalDurationMs = 1000;
 };
 
 class GraphicsRenderer {
@@ -16,9 +17,10 @@ public:
   static QImage render(const Project &project, const RenderContext &context = {});
 
 private:
-  static QPointF animatedOffset(const Layer &layer, const QSize &canvas, const RenderContext &context);
-  static qreal animatedScale(const Layer &layer, const RenderContext &context);
-  static qreal animatedOpacity(const Layer &layer, const RenderContext &context);
+  static qreal localProgress(const Layer &layer, const RenderContext &context);
+  static QPointF animatedOffset(const Layer &layer, const QSize &canvas, qreal visibilityProgress, bool entering);
+  static QSizeF animatedSize(const Layer &layer, qreal visibilityProgress, bool entering);
+  static qreal animatedOpacity(const Layer &layer, qreal visibilityProgress, bool entering);
 };
 
 } // namespace wg
