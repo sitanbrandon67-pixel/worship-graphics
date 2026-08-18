@@ -29,6 +29,7 @@ void AppState::loadProject(const Project &project)
   project_ = project;
   rebuildPreview();
   emit modelChanged();
+  emit timelineChanged();
 }
 
 void AppState::resetDemoProject() { loadProject(TemplateFactory::pastorLowerThird()); }
@@ -78,15 +79,37 @@ void AppState::rebuildPreview()
   emit previewChanged();
 }
 
+void AppState::renderPreviewAtTime(int elapsedMs, bool entering)
+{
+  const int total = transitionDuration(entering);
+  const int clamped = qBound(0, elapsedMs, total);
+  RenderContext ctx;
+  ctx.entering = entering;
+  ctx.totalDurationMs = total;
+  ctx.progress = total > 0 ? qreal(clamped) / qreal(total) : 1.0;
+  QImage next = GraphicsRenderer::render(project_, ctx);
+  {
+    QWriteLocker lock(&frameLock_);
+    previewFrame_ = std::move(next);
+  }
+  emit previewChanged();
+}
+
 int AppState::transitionDuration(bool entering) const
 {
   int total = 300;
   for (const auto &layer : project_.layers) {
     if (layer.type == LayerType::Group || !layer.visible) continue;
     const int delay = entering ? layer.enterDelayMs : layer.exitDelayMs;
-    total = qMax(total, delay + qMax(80, layer.animationDurationMs));
+    const int duration = entering ? layer.enterDurationMs : layer.exitDurationMs;
+    total = qMax(total, delay + qMax(80, duration));
   }
   return total;
+}
+
+int AppState::timelineDuration(bool entering) const
+{
+  return transitionDuration(entering);
 }
 
 void AppState::renderProgramAnimation(qreal progress, bool entering)
@@ -155,6 +178,7 @@ void AppState::notifyModelChanged()
 {
   rebuildPreview();
   emit modelChanged();
+  emit timelineChanged();
 }
 
 bool AppState::removeLayer(int index)
@@ -270,16 +294,53 @@ bool AppState::ungroupLayer(int index)
   notifyModelChanged(); return true;
 }
 
+bool AppState::setLayerTiming(int index, int delayMs, int durationMs, bool entering)
+{
+  if (index < 0 || index >= project_.layers.size()) return false;
+  auto &layer = project_.layers[index];
+  if (layer.type == LayerType::Group || layer.locked) return false;
+  delayMs = qMax(0, delayMs);
+  durationMs = qMax(80, durationMs);
+  if (entering) {
+    layer.enterDelayMs = delayMs;
+    layer.enterDurationMs = durationMs;
+  } else {
+    layer.exitDelayMs = delayMs;
+    layer.exitDurationMs = durationMs;
+  }
+  emit timelineChanged();
+  return true;
+}
+
+void AppState::scaleTimeline(qreal factor, bool entering)
+{
+  factor = qBound<qreal>(0.1, factor, 10.0);
+  for (auto &layer : project_.layers) {
+    if (layer.type == LayerType::Group || layer.locked) continue;
+    if (entering) {
+      layer.enterDelayMs = qMax(0, qRound(layer.enterDelayMs * factor));
+      layer.enterDurationMs = qMax(80, qRound(layer.enterDurationMs * factor));
+    } else {
+      layer.exitDelayMs = qMax(0, qRound(layer.exitDelayMs * factor));
+      layer.exitDurationMs = qMax(80, qRound(layer.exitDurationMs * factor));
+    }
+  }
+  emit timelineChanged();
+}
+
 void AppState::staggerLayers(int stepMs)
 {
   int i = 0;
+  int count = 0;
+  for (const auto &layer : project_.layers) if (layer.type != LayerType::Group) ++count;
   for (auto &layer : project_.layers) {
     if (layer.type == LayerType::Group) continue;
     layer.enterDelayMs = i * stepMs;
-    layer.exitDelayMs = (qMax(0, project_.layers.size() - i - 1)) * (stepMs / 2);
+    layer.exitDelayMs = qMax(0, count - i - 1) * (stepMs / 2);
     ++i;
   }
-  notifyModelChanged();
+  emit timelineChanged();
+  rebuildPreview();
 }
 
 } // namespace wg

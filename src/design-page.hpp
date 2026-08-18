@@ -53,7 +53,8 @@ private:
   QDoubleSpinBox *rotation_ = nullptr;
   QSpinBox *enterDelay_ = nullptr;
   QSpinBox *exitDelay_ = nullptr;
-  QSpinBox *duration_ = nullptr;
+  QSpinBox *enterDuration_ = nullptr;
+  QSpinBox *exitDuration_ = nullptr;
   QComboBox *enterAnimation_ = nullptr;
   QComboBox *exitAnimation_ = nullptr;
   TimelineWidget *timeline_ = nullptr;

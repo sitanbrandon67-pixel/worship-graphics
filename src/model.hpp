@@ -49,7 +49,8 @@ struct Layer {
   AnimationPreset exitAnimation = AnimationPreset::SlideRight;
   int enterDelayMs = 0;
   int exitDelayMs = 0;
-  int animationDurationMs = 450;
+  int enterDurationMs = 450;
+  int exitDurationMs = 450;
 };
 
 struct Project {

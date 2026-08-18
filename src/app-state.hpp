@@ -19,6 +19,7 @@ public:
   QImage previewFrame() const;
   QImage programFrame() const;
   bool programVisible() const { return programVisible_; }
+  int timelineDuration(bool entering) const;
 
   void loadProject(const Project &project);
   void resetDemoProject();
@@ -27,6 +28,7 @@ public:
   void applyBiblePassage(const QString &verse, const QString &reference);
 
   void rebuildPreview();
+  void renderPreviewAtTime(int elapsedMs, bool entering);
   void showPreviewOnProgram();
   void hideProgram();
   void setLayerText(int index, const QString &text);
@@ -39,12 +41,15 @@ public:
   bool toggleLayerLocked(int index);
   bool groupLayers(const QVector<int> &rows);
   bool ungroupLayer(int index);
+  bool setLayerTiming(int index, int delayMs, int durationMs, bool entering);
+  void scaleTimeline(qreal factor, bool entering);
   void staggerLayers(int stepMs = 80);
 
 signals:
   void previewChanged();
   void programChanged();
   void modelChanged();
+  void timelineChanged();
   void onAirChanged(bool visible);
 
 private:

@@ -1,0 +1,23 @@
+Worship Graphics v0.3 — Interactive Timeline + Program-only Operator
+
+NEW TIMELINE
+- Scrub/playhead preview directly in the Design canvas.
+- Play/pause and stop from the timeline.
+- Preview playback speeds: 0.25x, 0.5x, 1x and 2x.
+- Separate ENTRADA and SALIDA timeline phases.
+- Drag the start handle to trim/change the start time.
+- Drag the end handle to make a layer animation faster or slower.
+- Drag the complete timing bar to move the animation in time without changing its duration.
+- Separate entry and exit durations for every layer.
+- 1/2 TIEMPO compresses the selected phase to make the full sequence twice as fast.
+- x2 TIEMPO stretches the selected phase to make the full sequence twice as slow.
+- Selected layer is synchronized between Layers and Timeline.
+- Existing v0.2 templates remain loadable; legacy duration is migrated automatically.
+
+OPERATOR MODE
+- Only PROGRAM is displayed.
+- Preview remains an internal staging buffer, so edits/prepared Bible verses do not appear on-air until ENVIAR AL AIRE is pressed.
+- Bible action renamed to PREPARAR PARA PROGRAM.
+- PROGRAM display is larger and cleaner.
+
+Build version: 0.3.0

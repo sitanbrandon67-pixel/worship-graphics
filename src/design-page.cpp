@@ -97,8 +97,8 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   auto *canvasCard = new QFrame(); canvasCard->setObjectName("wgCard"); applySoftShadow(canvasCard);
   auto *canvasLayout = new QVBoxLayout(canvasCard);
   auto *canvasHeader = new QHBoxLayout();
-  auto *canvasTitle = new QLabel("CANVAS"); canvasTitle->setObjectName("wgSectionTitle");
-  auto *canvasInfo = new QLabel("1920×1080 · AUTO-ADAPTABLE"); canvasInfo->setObjectName("wgSubtle");
+  auto *canvasTitle = new QLabel("CANVAS · PREVISUALIZACIÓN DE TIEMPO"); canvasTitle->setObjectName("wgSectionTitle");
+  auto *canvasInfo = new QLabel("1920×1080 · ARRASTRA EL PLAYHEAD"); canvasInfo->setObjectName("wgSubtle");
   canvasHeader->addWidget(canvasTitle); canvasHeader->addStretch(); canvasHeader->addWidget(canvasInfo); canvasLayout->addLayout(canvasHeader);
   canvas_ = new QLabel(); canvas_->setObjectName("wgScreen"); canvas_->setAlignment(Qt::AlignCenter); canvas_->setMinimumSize(500, 281);
   canvasLayout->addWidget(canvas_, 1);
@@ -111,21 +111,38 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   name_ = new QLineEdit(); text_ = new QLineEdit(); color_ = new QLineEdit();
   x_ = new QSpinBox(); y_ = new QSpinBox(); w_ = new QSpinBox(); h_ = new QSpinBox(); fontSize_ = new QSpinBox();
   opacity_ = new QSpinBox(); radius_ = new QSpinBox(); rotation_ = new QDoubleSpinBox();
-  enterDelay_ = new QSpinBox(); exitDelay_ = new QSpinBox(); duration_ = new QSpinBox();
+  enterDelay_ = new QSpinBox(); exitDelay_ = new QSpinBox(); enterDuration_ = new QSpinBox(); exitDuration_ = new QSpinBox();
   for (auto *spin : {x_, y_, w_, h_}) spin->setRange(-8000, 8000);
   fontSize_->setRange(8, 400); opacity_->setRange(0, 100); radius_->setRange(0, 300); rotation_->setRange(-360, 360); rotation_->setDecimals(1);
-  enterDelay_->setRange(0, 10000); exitDelay_->setRange(0, 10000); duration_->setRange(80, 10000);
+  enterDelay_->setRange(0, 30000); exitDelay_->setRange(0, 30000); enterDuration_->setRange(80, 30000); exitDuration_->setRange(80, 30000);
   enterAnimation_ = new QComboBox(); exitAnimation_ = new QComboBox(); enterAnimation_->addItems(animationNames()); exitAnimation_->addItems(animationNames());
   form->addRow("Nombre", name_); form->addRow("Texto", text_); form->addRow("Color", color_);
   form->addRow("X", x_); form->addRow("Y", y_); form->addRow("Ancho", w_); form->addRow("Alto", h_);
   form->addRow("Fuente", fontSize_); form->addRow("Opacidad %", opacity_); form->addRow("Radio", radius_); form->addRow("Rotación", rotation_);
-  form->addRow("Entrada", enterAnimation_); form->addRow("Salida", exitAnimation_); form->addRow("Delay entrada", enterDelay_); form->addRow("Delay salida", exitDelay_); form->addRow("Duración", duration_);
+  form->addRow("Entrada", enterAnimation_); form->addRow("Delay entrada", enterDelay_); form->addRow("Duración entrada", enterDuration_);
+  form->addRow("Salida", exitAnimation_); form->addRow("Delay salida", exitDelay_); form->addRow("Duración salida", exitDuration_);
   propertiesLayout->addLayout(form);
   auto *apply = new QPushButton("APLICAR CAMBIOS"); apply->setObjectName("wgPrimary"); propertiesLayout->addWidget(apply); propertiesLayout->addStretch();
   body->addWidget(propertiesCard);
   root->addLayout(body, 1);
 
-  timeline_ = new TimelineWidget(); root->addWidget(timeline_);
+  auto *timelineCard = new QFrame(); timelineCard->setObjectName("wgCard"); applySoftShadow(timelineCard);
+  auto *timelineLayout = new QVBoxLayout(timelineCard); timelineLayout->setContentsMargins(10, 10, 10, 10); timelineLayout->setSpacing(8);
+  auto *timelineControls = new QHBoxLayout();
+  auto *phase = new QComboBox(); phase->addItems({"ENTRADA", "SALIDA"});
+  auto *play = new QPushButton("▶ REPRODUCIR"); play->setObjectName("wgPrimary");
+  auto *stop = new QPushButton("■ DETENER");
+  auto *speedLabel = new QLabel("Velocidad preview"); speedLabel->setObjectName("wgSubtle");
+  auto *speed = new QComboBox(); speed->addItem("0.25×", 0.25); speed->addItem("0.5×", 0.5); speed->addItem("1×", 1.0); speed->addItem("2×", 2.0); speed->setCurrentIndex(2);
+  auto *halfTime = new QPushButton("½ TIEMPO"); halfTime->setToolTip("Comprime todos los puntos de esta fase: animación 2× más rápida");
+  auto *doubleTime = new QPushButton("×2 TIEMPO"); doubleTime->setToolTip("Estira todos los puntos de esta fase: animación 2× más lenta");
+  auto *timeReadout = new QLabel("0.00 s"); timeReadout->setObjectName("wgSubtle");
+  timelineControls->addWidget(phase); timelineControls->addWidget(play); timelineControls->addWidget(stop); timelineControls->addSpacing(10);
+  timelineControls->addWidget(speedLabel); timelineControls->addWidget(speed); timelineControls->addSpacing(10);
+  timelineControls->addWidget(halfTime); timelineControls->addWidget(doubleTime); timelineControls->addStretch(); timelineControls->addWidget(timeReadout);
+  timelineLayout->addLayout(timelineControls);
+  timeline_ = new TimelineWidget(); timelineLayout->addWidget(timeline_);
+  root->addWidget(timelineCard);
 
   auto &state = AppState::instance();
   connect(&state, &AppState::previewChanged, this, &DesignPage::refreshCanvas);
@@ -148,7 +165,19 @@ DesignPage::DesignPage(QWidget *parent) : QWidget(parent)
   connect(save, &QPushButton::clicked, this, &DesignPage::saveTemplate);
   connect(templates_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *) { loadSelectedTemplate(); });
 
+  connect(phase, &QComboBox::currentIndexChanged, this, [this](int index) { timeline_->setPhase(index == 0); });
+  connect(play, &QPushButton::clicked, timeline_, &TimelineWidget::togglePlayback);
+  connect(stop, &QPushButton::clicked, this, [this] { timeline_->stopPlayback(); timeline_->setCurrentTimeMs(0); });
+  connect(speed, &QComboBox::currentIndexChanged, this, [this, speed](int index) { timeline_->setPlaybackSpeed(speed->itemData(index).toDouble()); });
+  connect(halfTime, &QPushButton::clicked, this, [this] { AppState::instance().scaleTimeline(0.5, timeline_->isEntering()); timeline_->refreshCurrentFrame(); selectLayer(currentRow_); });
+  connect(doubleTime, &QPushButton::clicked, this, [this] { AppState::instance().scaleTimeline(2.0, timeline_->isEntering()); timeline_->refreshCurrentFrame(); selectLayer(currentRow_); });
+  connect(timeline_, &TimelineWidget::currentTimeChanged, this, [timeReadout](int ms) { timeReadout->setText(QString::number(ms / 1000.0, 'f', 2) + " s"); });
+  connect(timeline_, &TimelineWidget::playbackStateChanged, this, [play](bool playing) { play->setText(playing ? "❚❚ PAUSA" : "▶ REPRODUCIR"); });
+  connect(timeline_, &TimelineWidget::layerSelected, layers_, &QListWidget::setCurrentRow);
+  connect(timeline_, &TimelineWidget::timingEdited, this, [this](int row) { if (row == currentRow_) selectLayer(row); });
+
   refreshTemplateLibrary(); rebuildLayerList(); refreshCanvas();
+  timeline_->setCurrentTimeMs(0);
 }
 
 void DesignPage::refreshTemplateLibrary()
@@ -181,6 +210,7 @@ void DesignPage::loadSelectedTemplate()
     if (TemplateLibrary::load(id, &p, &error)) AppState::instance().loadProject(p);
     else QMessageBox::warning(this, "Plantilla", error);
   }
+  timeline_->setCurrentTimeMs(0);
 }
 
 void DesignPage::saveTemplate()
@@ -195,6 +225,7 @@ void DesignPage::saveTemplate()
 void DesignPage::rebuildLayerList()
 {
   const QString keepId = (currentRow_ >= 0 && currentRow_ < AppState::instance().project().layers.size()) ? AppState::instance().project().layers[currentRow_].id : QString();
+  layers_->blockSignals(true);
   layers_->clear();
   const auto &project = AppState::instance().project();
   int restore = -1;
@@ -206,7 +237,11 @@ void DesignPage::rebuildLayerList()
     auto *item = new QListWidgetItem(indent + type + "  " + layer.name + flags); item->setData(Qt::UserRole, layer.id); layers_->addItem(item);
     if (!keepId.isEmpty() && layer.id == keepId) restore = i;
   }
-  setCurrentRowSafe(restore >= 0 ? restore : qMin(currentRow_, layers_->count() - 1));
+  const int row = restore >= 0 ? restore : qMin(currentRow_, layers_->count() - 1);
+  if (row >= 0 && row < layers_->count()) layers_->setCurrentRow(row); else currentRow_ = -1;
+  layers_->blockSignals(false);
+  if (row >= 0) selectLayer(row);
+  timeline_->setSelectedLayer(currentRow_);
   timeline_->update();
 }
 
@@ -217,14 +252,15 @@ void DesignPage::setCurrentRowSafe(int row)
 
 void DesignPage::selectLayer(int row)
 {
-  currentRow_ = row; const auto &project = AppState::instance().project();
+  currentRow_ = row; timeline_->setSelectedLayer(row);
+  const auto &project = AppState::instance().project();
   if (row < 0 || row >= project.layers.size()) return;
   const auto &l = project.layers[row];
   name_->setText(l.name); text_->setText(l.text); color_->setText(l.color.name(QColor::HexArgb));
   x_->setValue(qRound(l.position.x())); y_->setValue(qRound(l.position.y())); w_->setValue(qRound(l.size.width())); h_->setValue(qRound(l.size.height()));
   fontSize_->setValue(l.fontSize); opacity_->setValue(qRound(l.opacity * 100)); radius_->setValue(qRound(l.cornerRadius)); rotation_->setValue(l.rotationDeg);
   enterAnimation_->setCurrentIndex(static_cast<int>(l.enterAnimation)); exitAnimation_->setCurrentIndex(static_cast<int>(l.exitAnimation));
-  enterDelay_->setValue(l.enterDelayMs); exitDelay_->setValue(l.exitDelayMs); duration_->setValue(l.animationDurationMs);
+  enterDelay_->setValue(l.enterDelayMs); exitDelay_->setValue(l.exitDelayMs); enterDuration_->setValue(l.enterDurationMs); exitDuration_->setValue(l.exitDurationMs);
   text_->setEnabled(l.type == LayerType::Text);
 }
 
@@ -239,7 +275,8 @@ void DesignPage::applyProperties()
   l.position = QPointF(x_->value(), y_->value()); l.size = QSizeF(w_->value(), h_->value()); l.fontSize = fontSize_->value();
   l.opacity = opacity_->value() / 100.0; l.cornerRadius = radius_->value(); l.rotationDeg = rotation_->value();
   l.enterAnimation = static_cast<AnimationPreset>(enterAnimation_->currentIndex()); l.exitAnimation = static_cast<AnimationPreset>(exitAnimation_->currentIndex());
-  l.enterDelayMs = enterDelay_->value(); l.exitDelayMs = exitDelay_->value(); l.animationDurationMs = duration_->value(); state.notifyModelChanged();
+  l.enterDelayMs = enterDelay_->value(); l.exitDelayMs = exitDelay_->value(); l.enterDurationMs = enterDuration_->value(); l.exitDurationMs = exitDuration_->value();
+  state.notifyModelChanged(); timeline_->refreshCurrentFrame();
 }
 
 void DesignPage::addTextLayer()
@@ -279,12 +316,12 @@ void DesignPage::groupSelection()
   if (!AppState::instance().groupLayers(rows)) QMessageBox::information(this, "Agrupar", "Selecciona dos o más capas.");
 }
 void DesignPage::ungroupCurrent() { AppState::instance().ungroupLayer(currentRow_); }
-void DesignPage::applyStagger() { AppState::instance().staggerLayers(80); }
+void DesignPage::applyStagger() { AppState::instance().staggerLayers(80); timeline_->refreshCurrentFrame(); selectLayer(currentRow_); }
 
 void DesignPage::importPsdPlaceholder()
 {
   const QString file = QFileDialog::getOpenFileName(this, "Importar diseño de Photoshop", {}, "Photoshop (*.psd *.psb)"); if (file.isEmpty()) return;
-  QMessageBox::information(this, "Importador PSD", "PSD seleccionado. El parser de capas PSD/PSB sigue siendo el siguiente módulo del motor; esta versión ya tiene grupos, imágenes, biblioteca y Motion Timeline para recibir esas capas sin rehacer el editor.");
+  QMessageBox::information(this, "Importador PSD", "PSD seleccionado. El parser de capas PSD/PSB sigue siendo el siguiente módulo del motor; esta versión ya tiene grupos, imágenes, biblioteca y un Timeline editable para recibir esas capas sin rehacer el editor.");
 }
 
 void DesignPage::refreshCanvas()

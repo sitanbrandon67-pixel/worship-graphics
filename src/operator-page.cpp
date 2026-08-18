@@ -18,13 +18,6 @@
 
 namespace wg {
 
-static QLabel *makeScreen(const QString &title, QVBoxLayout *parent)
-{
-  auto *caption = new QLabel(title); caption->setObjectName("wgSectionTitle"); parent->addWidget(caption);
-  auto *label = new QLabel(); label->setObjectName("wgScreen"); label->setMinimumSize(360, 205); label->setAlignment(Qt::AlignCenter); parent->addWidget(label, 1);
-  return label;
-}
-
 OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
 {
   auto *root = new QVBoxLayout(this); root->setContentsMargins(20, 18, 20, 18); root->setSpacing(14);
@@ -35,6 +28,7 @@ OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
   auto *service = new QVBoxLayout(serviceCard);
   auto *serviceTitle = new QLabel("SERVICIO PREPARADO"); serviceTitle->setObjectName("wgSectionTitle"); service->addWidget(serviceTitle);
   serviceList_ = new QListWidget(); serviceList_->addItems({"Pastor principal", "Versículo", "Tema de prédica", "Grupo de alabanza", "Anuncio"}); serviceList_->setMaximumHeight(150); service->addWidget(serviceList_);
+  preparedLabel_ = new QLabel("Preparado internamente · no está al aire"); preparedLabel_->setObjectName("wgSubtle"); service->addWidget(preparedLabel_);
   leftColumn->addWidget(serviceCard);
 
   auto *bibleCard = new QFrame(); bibleCard->setObjectName("wgCard"); applySoftShadow(bibleCard);
@@ -54,43 +48,42 @@ OperatorPage::OperatorPage(QWidget *parent) : QWidget(parent)
   auto *selectButton = new QPushButton("CARGAR SELECCIÓN"); bibleLayout->addWidget(selectButton);
 
   bibleResult_ = new QTextEdit(); bibleResult_->setReadOnly(true); bibleResult_->setPlaceholderText("El texto bíblico aparecerá aquí."); bibleResult_->setMinimumHeight(125); bibleLayout->addWidget(bibleResult_);
-  auto *use = new QPushButton("USAR EN PREVIEW"); use->setObjectName("wgPrimary"); bibleLayout->addWidget(use);
+  auto *prepare = new QPushButton("PREPARAR PARA PROGRAM"); prepare->setObjectName("wgPrimary"); bibleLayout->addWidget(prepare);
   leftColumn->addWidget(bibleCard, 1);
   body->addLayout(leftColumn, 0);
 
-  auto *screensCard = new QFrame(); screensCard->setObjectName("wgCard"); applySoftShadow(screensCard);
-  auto *screens = new QVBoxLayout(screensCard);
-  auto *screenRow = new QHBoxLayout(); screenRow->setSpacing(12);
-  auto *previewCol = new QVBoxLayout(); auto *programCol = new QVBoxLayout();
-  previewScreen_ = makeScreen("PREVIEW", previewCol); programScreen_ = makeScreen("PROGRAM", programCol);
-  screenRow->addLayout(previewCol, 1); screenRow->addLayout(programCol, 1); screens->addLayout(screenRow, 1);
-  statusLabel_ = new QLabel("● FUERA DEL AIRE"); statusLabel_->setObjectName("wgSubtle"); screens->addWidget(statusLabel_);
-  body->addWidget(screensCard, 1); root->addLayout(body, 1);
+  auto *programCard = new QFrame(); programCard->setObjectName("wgCard"); applySoftShadow(programCard);
+  auto *programLayout = new QVBoxLayout(programCard);
+  auto *programHeader = new QHBoxLayout();
+  auto *programTitle = new QLabel("PROGRAM"); programTitle->setObjectName("wgSectionTitle");
+  statusLabel_ = new QLabel("● FUERA DEL AIRE"); statusLabel_->setObjectName("wgSubtle");
+  programHeader->addWidget(programTitle); programHeader->addStretch(); programHeader->addWidget(statusLabel_); programLayout->addLayout(programHeader);
+  programScreen_ = new QLabel(); programScreen_->setObjectName("wgScreen"); programScreen_->setMinimumSize(600, 338); programScreen_->setAlignment(Qt::AlignCenter); programLayout->addWidget(programScreen_, 1);
+  body->addWidget(programCard, 1); root->addLayout(body, 1);
 
   auto *controlsCard = new QFrame(); controlsCard->setObjectName("wgFloatingBar"); applySoftShadow(controlsCard);
   auto *controls = new QHBoxLayout(controlsCard); controls->setContentsMargins(14, 10, 14, 10);
-  auto *previousButton = new QPushButton("← ANTERIOR"); auto *previewButton = new QPushButton("VISTA PREVIA");
+  auto *previousButton = new QPushButton("← ANTERIOR");
   auto *airButton = new QPushButton("ENVIAR AL AIRE"); airButton->setObjectName("wgPrimary");
   auto *hideButton = new QPushButton("OCULTAR"); hideButton->setObjectName("wgDanger"); auto *nextButton = new QPushButton("SIGUIENTE →");
-  controls->addWidget(previousButton); controls->addWidget(previewButton); controls->addWidget(airButton); controls->addWidget(hideButton); controls->addWidget(nextButton); root->addWidget(controlsCard);
+  controls->addWidget(previousButton); controls->addStretch(); controls->addWidget(airButton); controls->addWidget(hideButton); controls->addStretch(); controls->addWidget(nextButton); root->addWidget(controlsCard);
 
   auto &state = AppState::instance();
-  connect(&state, &AppState::previewChanged, this, &OperatorPage::refreshPreview);
   connect(&state, &AppState::programChanged, this, &OperatorPage::refreshProgram);
+  connect(&state, &AppState::previewChanged, this, [this] { preparedLabel_->setText("● CONTENIDO PREPARADO · listo para ENVIAR AL AIRE"); });
   connect(&state, &AppState::onAirChanged, this, [this](bool onAir) { statusLabel_->setText(onAir ? "● EN VIVO — WORSHIP GRAPHICS" : "● FUERA DEL AIRE"); });
-  connect(previewButton, &QPushButton::clicked, &state, &AppState::rebuildPreview);
   connect(airButton, &QPushButton::clicked, &state, &AppState::showPreviewOnProgram);
   connect(hideButton, &QPushButton::clicked, &state, &AppState::hideProgram);
   connect(previousButton, &QPushButton::clicked, this, [this] { cycleDemo(-1); }); connect(nextButton, &QPushButton::clicked, this, [this] { cycleDemo(1); });
 
   connect(install, &QPushButton::clicked, this, &OperatorPage::installBible);
   connect(searchButton, &QPushButton::clicked, this, &OperatorPage::searchBible); connect(bibleSearch_, &QLineEdit::returnPressed, this, &OperatorPage::searchBible);
-  connect(use, &QPushButton::clicked, this, &OperatorPage::useBibleOnPreview);
+  connect(prepare, &QPushButton::clicked, this, &OperatorPage::prepareBibleForProgram);
   connect(prevVerse, &QPushButton::clicked, this, [this] { navigateBible(-1); }); connect(nextVerse, &QPushButton::clicked, this, [this] { navigateBible(1); });
   connect(book_, &QComboBox::currentIndexChanged, this, &OperatorPage::refreshChapters); connect(chapter_, &QComboBox::currentIndexChanged, this, &OperatorPage::refreshVerses);
   connect(selectButton, &QPushButton::clicked, this, &OperatorPage::selectBibleVerse);
 
-  refreshPreview(); refreshProgram();
+  refreshProgram();
   QTimer::singleShot(0, this, &OperatorPage::tryLoadInstalledBible);
 }
 
@@ -152,20 +145,17 @@ void OperatorPage::navigateBible(int delta)
   showPassage(bible_.adjacent(currentPassage_, delta));
 }
 
-void OperatorPage::useBibleOnPreview()
+void OperatorPage::prepareBibleForProgram()
 {
   if (!currentPassage_.valid) return;
   AppState::instance().applyBiblePassage(currentPassage_.text, currentPassage_.reference);
-}
-
-void OperatorPage::refreshPreview()
-{
-  const QImage frame = AppState::instance().previewFrame(); previewScreen_->setPixmap(QPixmap::fromImage(frame).scaled(previewScreen_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+  preparedLabel_->setText("● " + currentPassage_.reference + " preparado · aún no está al aire");
 }
 
 void OperatorPage::refreshProgram()
 {
-  const QImage frame = AppState::instance().programFrame(); programScreen_->setPixmap(QPixmap::fromImage(frame).scaled(programScreen_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+  const QImage frame = AppState::instance().programFrame();
+  programScreen_->setPixmap(QPixmap::fromImage(frame).scaled(programScreen_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 void OperatorPage::cycleDemo(int direction)

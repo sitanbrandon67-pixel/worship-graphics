@@ -22,7 +22,7 @@ MainDock::MainDock(QWidget *parent) : QWidget(parent)
   auto *top = new QWidget(); top->setObjectName("wgTopBar");
   auto *topLayout = new QHBoxLayout(top); topLayout->setContentsMargins(22, 14, 22, 14); topLayout->setSpacing(10);
   auto *brand = new QLabel("WORSHIP GRAPHICS"); brand->setObjectName("wgBrand");
-  auto *version = new QLabel("v" WG_VERSION "  ·  MOTION + BIBLE"); version->setObjectName("wgSubtle");
+  auto *version = new QLabel("v" WG_VERSION "  ·  MOTION + BIBLE + TIMELINE"); version->setObjectName("wgSubtle");
   auto *operatorMode = new QPushButton("OPERADOR"); auto *designMode = new QPushButton("DISEÑO");
   operatorMode->setObjectName("wgMode"); designMode->setObjectName("wgMode"); operatorMode->setCheckable(true); designMode->setCheckable(true); operatorMode->setChecked(true);
   auto *modes = new QButtonGroup(this); modes->setExclusive(true); modes->addButton(operatorMode, 0); modes->addButton(designMode, 1);

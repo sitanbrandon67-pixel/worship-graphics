@@ -14,12 +14,11 @@ class OperatorPage final : public QWidget {
 public:
   explicit OperatorPage(QWidget *parent = nullptr);
 private slots:
-  void refreshPreview();
   void refreshProgram();
   void cycleDemo(int direction);
   void installBible();
   void searchBible();
-  void useBibleOnPreview();
+  void prepareBibleForProgram();
   void navigateBible(int delta);
   void refreshBibleSelectors();
   void refreshChapters();
@@ -29,9 +28,9 @@ private:
   void showPassage(const BiblePassage &passage);
   void tryLoadInstalledBible();
 
-  QLabel *previewScreen_ = nullptr;
   QLabel *programScreen_ = nullptr;
   QLabel *statusLabel_ = nullptr;
+  QLabel *preparedLabel_ = nullptr;
   QListWidget *serviceList_ = nullptr;
   QLineEdit *bibleSearch_ = nullptr;
   QTextEdit *bibleResult_ = nullptr;

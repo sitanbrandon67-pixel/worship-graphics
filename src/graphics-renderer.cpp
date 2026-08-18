@@ -4,7 +4,6 @@
 #include <QImage>
 #include <QPainter>
 #include <QPainterPath>
-#include <QRandomGenerator>
 #include <QtMath>
 
 namespace wg {
@@ -29,13 +28,12 @@ qreal GraphicsRenderer::localProgress(const Layer &layer, const RenderContext &c
   const int total = qMax(1, context.totalDurationMs);
   const int elapsed = qRound(context.progress * total);
   const int delay = context.entering ? layer.enterDelayMs : layer.exitDelayMs;
-  const int duration = qMax(80, layer.animationDurationMs);
+  const int duration = qMax(80, context.entering ? layer.enterDurationMs : layer.exitDurationMs);
   return qBound<qreal>(0.0, qreal(elapsed - delay) / duration, 1.0);
 }
 
 QPointF GraphicsRenderer::animatedOffset(const Layer &layer, const QSize &canvas, qreal v, bool entering)
 {
-  Q_UNUSED(entering);
   const qreal p = easeOutCubic(v);
   const qreal amount = 1.0 - p;
   const auto preset = entering ? layer.enterAnimation : layer.exitAnimation;

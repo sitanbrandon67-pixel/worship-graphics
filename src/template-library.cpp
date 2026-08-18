@@ -48,7 +48,7 @@ bool TemplateLibrary::save(const Project &project, const QString &name, QString 
 {
   QJsonObject root;
   root["format"] = "WorshipGraphicsTemplate";
-  root["version"] = 1;
+  root["version"] = 2;
   root["name"] = name;
   root["canvasWidth"] = project.canvas.width();
   root["canvasHeight"] = project.canvas.height();
@@ -64,7 +64,8 @@ bool TemplateLibrary::save(const Project &project, const QString &name, QString 
     o["text"] = l.text; o["fontFamily"] = l.fontFamily; o["fontSize"] = l.fontSize; o["bold"] = l.bold;
     o["imagePath"] = l.imagePath;
     o["enter"] = static_cast<int>(l.enterAnimation); o["exit"] = static_cast<int>(l.exitAnimation);
-    o["enterDelay"] = l.enterDelayMs; o["exitDelay"] = l.exitDelayMs; o["duration"] = l.animationDurationMs;
+    o["enterDelay"] = l.enterDelayMs; o["exitDelay"] = l.exitDelayMs;
+    o["enterDuration"] = l.enterDurationMs; o["exitDuration"] = l.exitDurationMs;
     layers.append(o);
   }
   root["layers"] = layers;
@@ -113,7 +114,10 @@ bool TemplateLibrary::load(const QString &filePath, Project *project, QString *e
     l.text = o.value("text").toString(); l.fontFamily = o.value("fontFamily").toString("Segoe UI"); l.fontSize = o.value("fontSize").toInt(48); l.bold = o.value("bold").toBool(false);
     l.imagePath = o.value("imagePath").toString();
     l.enterAnimation = static_cast<AnimationPreset>(o.value("enter").toInt()); l.exitAnimation = static_cast<AnimationPreset>(o.value("exit").toInt());
-    l.enterDelayMs = o.value("enterDelay").toInt(); l.exitDelayMs = o.value("exitDelay").toInt(); l.animationDurationMs = o.value("duration").toInt(450);
+    l.enterDelayMs = o.value("enterDelay").toInt(); l.exitDelayMs = o.value("exitDelay").toInt();
+    const int legacyDuration = o.value("duration").toInt(450);
+    l.enterDurationMs = o.value("enterDuration").toInt(legacyDuration);
+    l.exitDurationMs = o.value("exitDuration").toInt(legacyDuration);
     out.layers.push_back(l);
   }
   *project = std::move(out);

@@ -14,7 +14,7 @@ static Layer shape(const QString &name, const QString &parent, const QRectF &rec
   l.id = uid(); l.name = name; l.parentId = parent; l.type = LayerType::Shape;
   l.position = rect.topLeft(); l.size = rect.size(); l.color = color; l.cornerRadius = radius;
   l.enterAnimation = in; l.exitAnimation = out; l.enterDelayMs = delay;
-  l.exitDelayMs = delay / 2; l.animationDurationMs = duration; l.textured = textured;
+  l.exitDelayMs = delay / 2; l.enterDurationMs = duration; l.exitDurationMs = duration; l.textured = textured;
   return l;
 }
 
@@ -26,7 +26,7 @@ static Layer text(const QString &name, const QString &parent, const QRectF &rect
   l.id = uid(); l.name = name; l.parentId = parent; l.type = LayerType::Text;
   l.position = rect.topLeft(); l.size = rect.size(); l.text = value; l.fontSize = size;
   l.color = color; l.bold = bold; l.enterAnimation = in; l.exitAnimation = out;
-  l.enterDelayMs = delay; l.exitDelayMs = delay / 2; l.animationDurationMs = duration;
+  l.enterDelayMs = delay; l.exitDelayMs = delay / 2; l.enterDurationMs = duration; l.exitDurationMs = duration;
   return l;
 }
 
